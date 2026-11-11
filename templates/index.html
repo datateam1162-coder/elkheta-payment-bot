@@ -1,0 +1,996 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Elkheta Auto-Payment System | سيستم تسجيل الاشتراكات الذكي</title>
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0f172a;
+      --card: #1e293b;
+      --card-border: #334155;
+      --primary: #7c3aed;
+      --primary-hover: #6d28d9;
+      --success: #10b981;
+      --warning: #f59e0b;
+      --danger: #ef4444;
+      --text: #f8fafc;
+      --muted: #94a3b8;
+    }
+    * { box-sizing: border-box; font-family: 'Cairo', sans-serif; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      padding: 20px;
+    }
+    .container {
+      max-width: 1320px;
+      margin: 0 auto;
+    }
+    /* Header & Login Bar */
+    .top-bar {
+      background: var(--card);
+      border: 1px solid var(--card-border);
+      border-radius: 14px;
+      padding: 16px 22px;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 20px;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .brand-badge {
+      background: linear-gradient(135deg, #7c3aed, #4f46e5);
+      width: 42px;
+      height: 42px;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 800;
+      font-size: 20px;
+    }
+    .brand h1 {
+      margin: 0;
+      font-size: 19px;
+      font-weight: 800;
+    }
+    .brand p {
+      margin: 0;
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .login-box {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 10px;
+    }
+    .login-box input {
+      background: #0f172a;
+      border: 1px solid var(--card-border);
+      color: var(--text);
+      padding: 8px 12px;
+      border-radius: 8px;
+      font-size: 13px;
+      width: 170px;
+    }
+    .btn {
+      background: var(--primary);
+      color: #fff;
+      border: none;
+      padding: 9px 18px;
+      border-radius: 8px;
+      font-weight: 700;
+      font-size: 14px;
+      cursor: pointer;
+      transition: 0.15s;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .btn:hover { background: var(--primary-hover); }
+    .btn:disabled { opacity: 0.55; cursor: not-allowed; }
+    .btn-success { background: var(--success); }
+    .btn-success:hover { background: #059669; }
+    .btn-warning { background: var(--warning); color: #0f172a; }
+    .btn-warning:hover { background: #d97706; color: #fff; }
+    .btn-outline {
+      background: transparent;
+      border: 1px solid var(--card-border);
+      color: var(--text);
+    }
+    .btn-outline:hover { background: #334155; }
+
+    .status-pill {
+      padding: 5px 12px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 700;
+      background: rgba(148, 163, 184, 0.15);
+      color: var(--muted);
+    }
+    .status-pill.connected {
+      background: rgba(16, 185, 129, 0.18);
+      color: #34d399;
+    }
+
+    /* Tabs */
+    .tabs {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 18px;
+    }
+    .tab-btn {
+      background: var(--card);
+      border: 1px solid var(--card-border);
+      color: var(--muted);
+      padding: 10px 20px;
+      border-radius: 10px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .tab-btn.active {
+      background: var(--primary);
+      border-color: var(--primary);
+      color: #fff;
+    }
+
+    /* Main Grid */
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 460px 1fr;
+      gap: 20px;
+    }
+    @media (max-width: 980px) {
+      .grid-2 { grid-template-columns: 1fr; }
+    }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--card-border);
+      border-radius: 14px;
+      padding: 20px;
+    }
+    .card h2 {
+      margin: 0 0 14px 0;
+      font-size: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .sheet-row-box {
+      background: linear-gradient(145deg, rgba(16, 185, 129, 0.1), rgba(124, 58, 237, 0.12));
+      border: 2px solid #10b981;
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 18px;
+    }
+    .sheet-row-box h3 {
+      margin: 0 0 10px 0;
+      font-size: 15px;
+      color: #34d399;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    label {
+      display: block;
+      font-size: 13px;
+      font-weight: 600;
+      margin-bottom: 6px;
+      color: #cbd5e1;
+    }
+    textarea, input[type="text"], input[type="number"], select {
+      width: 100%;
+      background: #0f172a;
+      border: 1px solid var(--card-border);
+      color: var(--text);
+      border-radius: 9px;
+      padding: 10px 12px;
+      font-size: 13px;
+    }
+    textarea {
+      min-height: 115px;
+      resize: vertical;
+      line-height: 1.6;
+    }
+    .drop-zone {
+      border: 2px dashed #475569;
+      border-radius: 12px;
+      padding: 14px;
+      text-align: center;
+      cursor: pointer;
+      background: rgba(15, 23, 42, 0.6);
+      transition: 0.2s;
+      margin-bottom: 14px;
+    }
+    .drop-zone:hover, .drop-zone.dragover {
+      border-color: var(--primary);
+      background: rgba(124, 58, 237, 0.08);
+    }
+    .drop-zone img {
+      max-height: 170px;
+      max-width: 100%;
+      border-radius: 8px;
+      margin-top: 10px;
+      display: none;
+    }
+    .checkbox-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 10px;
+      font-size: 13px;
+      color: #cbd5e1;
+    }
+    .checkbox-row input { width: 16px; height: 16px; }
+
+    /* Alert & Case Cards */
+    .hard-case-box {
+      background: rgba(245, 158, 11, 0.12);
+      border: 2px solid var(--warning);
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 18px;
+    }
+    .hard-case-box h3 {
+      margin: 0 0 8px 0;
+      color: #fbbf24;
+      font-size: 16px;
+    }
+    .hard-case-box ul {
+      margin: 8px 0 14px 0;
+      padding-right: 20px;
+      color: #fde68a;
+      font-size: 13.5px;
+    }
+    .clean-case-box {
+      background: rgba(16, 185, 129, 0.12);
+      border: 2px solid var(--success);
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 18px;
+    }
+    .clean-case-box h3 {
+      margin: 0 0 6px 0;
+      color: #34d399;
+      font-size: 16px;
+    }
+
+    .extracted-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+    .field-card {
+      background: #0f172a;
+      border: 1px solid var(--card-border);
+      padding: 10px 12px;
+      border-radius: 9px;
+    }
+    .field-card span {
+      display: block;
+      font-size: 11px;
+      color: var(--muted);
+    }
+    .field-card input, .field-card select {
+      margin-top: 4px;
+      padding: 6px 8px;
+      font-weight: 700;
+      font-size: 13px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+    th, td {
+      border-bottom: 1px solid var(--card-border);
+      padding: 10px 8px;
+      text-align: right;
+    }
+    th { color: var(--muted); font-weight: 700; }
+    .badge {
+      padding: 3px 9px;
+      border-radius: 6px;
+      font-size: 11.5px;
+      font-weight: 700;
+    }
+    .badge-warn { background: rgba(245, 158, 11, 0.2); color: #fbbf24; }
+    .badge-ok { background: rgba(16, 185, 129, 0.2); color: #34d399; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- Top Header & Login Credentials Bar -->
+    <div class="top-bar">
+      <div class="brand">
+        <div class="brand-badge">الخطة</div>
+        <div>
+          <h1>سيستم تسجيل المدفوعات الذكي (Google Sheet Row + OCR)</h1>
+          <p>متصل بسيستم <a href="https://payments.elkheta.org/payments?tab=all-payments" target="_blank" style="color:#a78bfa;">payments.elkheta.org</a> — قراءة الشيت والـ OCR بالكود بدون AI (Read-Only)</p>
+        </div>
+      </div>
+
+      <div class="login-box">
+        <input type="text" id="loginUser" placeholder="اليوزر (رقم الموبايل)" value="{{ creds.username or '01206326556' }}" />
+        <input type="password" id="loginPass" placeholder="الباسورد" value="{{ creds.password or '01271844644' }}" />
+        <button class="btn" id="btnLogin" onclick="doLogin()">تسجيل الدخول والربط</button>
+        <span class="status-pill" id="connStatus">جاهز للاتصال</span>
+      </div>
+    </div>
+
+    <!-- Employee Local Engine Banner (shown when opened via GitHub Pages link and local engine is not yet running) -->
+    <div id="localEngineBanner" style="display:none; background:linear-gradient(135deg, rgba(124,58,237,0.2), rgba(16,185,129,0.18)); border:1px solid #10b981; border-radius:12px; padding:12px 18px; margin-bottom:16px; display:none; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px;">
+      <div>
+        <strong style="color:#6ee7b7; font-size:14px;">💻 استخدام السيستم على جهازك الشخصي:</strong>
+        <span style="color:#e2e8f0; font-size:13px; margin-right:6px;">لتفعيل التحكم التلقائي في متصفح Chrome على جهازك بحسابك الخاص، حمّل وشغّل ملف التشغيل بضغطة واحدة:</span>
+      </div>
+      <a href="Run_Elkheta_Payment_Bot.bat" download="Run_Elkheta_Payment_Bot.bat" class="btn btn-success" style="text-decoration:none; padding:8px 16px; font-size:13px;">
+        ⬇️ تحميل مشغل الجهاز التلقائي (Run_Elkheta_Payment_Bot.bat)
+      </a>
+    </div>
+
+    <!-- Navigation Tabs -->
+    <div class="tabs">
+      <button class="tab-btn active" id="tabBtnOrder" onclick="switchTab('order')">1. تسجيل أوردر (برقم الـ Row من الشيت أو يدوي)</button>
+      <button class="tab-btn" id="tabBtnPrices" onclick="switchTab('prices')">2. جدول الأسعار (يتحدث في أي وقت)</button>
+    </div>
+
+    <!-- TAB 1: ORDER REGISTRATION -->
+    <div id="tabOrder" class="grid-2">
+      <!-- Right Input Column -->
+      <div class="card">
+        <!-- PRIMARY: GOOGLE SHEET ROW FETCHER (STRICTLY READ-ONLY) -->
+        <div class="sheet-row-box">
+          <h3>
+            <span>📊 التسجيل المباشر برقم الـ Row من الشيت</span>
+            <span class="badge badge-ok">قراءة فقط Read-Only</span>
+          </h3>
+
+          <div style="margin-bottom: 10px;">
+            <label>لينك شيت جوجل (Google Sheet URL — يُحفظ تلقائياً):</label>
+            <div style="display:flex; gap:8px;">
+              <input type="text" id="sheetUrlInput" placeholder="https://docs.google.com/spreadsheets/d/..." value="{{ creds.sheet_url or '' }}" />
+              <button class="btn btn-outline" style="padding:8px 12px; white-space:nowrap;" onclick="saveSheetUrl()">💾 حفظ</button>
+            </div>
+          </div>
+
+          <div style="margin-bottom: 12px;">
+            <label>رقم الـ Row في الشيت (اكتب الرقم واضغط Enter أو الزر):</label>
+            <div style="display:flex; gap:8px; align-items:center;">
+              <input
+                type="number"
+                id="rowNumberInput"
+                placeholder="مثال: 15"
+                min="2"
+                style="font-size:18px; font-weight:800; text-align:center; border-color:#10b981;"
+                onkeydown="if(event.key==='Enter') processSheetRow()"
+              />
+              <button class="btn btn-outline" style="padding:10px 12px;" title="الرو السابق" onclick="stepRow(-1)">−</button>
+              <button class="btn btn-outline" style="padding:10px 12px;" title="الرو التالي" onclick="stepRow(1)">+</button>
+            </div>
+          </div>
+
+          <div class="checkbox-row">
+            <input type="checkbox" id="chkLiveSearch" checked />
+            <span>البحث في شريط السيرش (`All Payments` + `Remaining`) قبل التسجيل</span>
+          </div>
+
+          <div class="checkbox-row">
+            <input type="checkbox" id="chkAutoSubmit" checked />
+            <span>تسجيل وحفظ الأوردر تلقائياً في السيستم إذا لم توجد حالة صعبة</span>
+          </div>
+
+          <button class="btn btn-success" id="btnProcessRow" style="width:100%; justify-content:center; padding:12px; font-size:15px;" onclick="processSheetRow()">
+            🚀 سحب بيانات الـ Row من الشيت وتسجيله فوراً
+          </button>
+        </div>
+
+        <!-- SECONDARY: MANUAL PASTE / UPLOAD (ALSO AUTO-FILLED WHEN FETCHING A ROW) -->
+        <h2>
+          <span>بيانات الـ Row المسحوبة / الإدخال اليدوي</span>
+          <button class="btn btn-outline" style="padding:4px 10px; font-size:12px;" onclick="fillSample()">تجربة المثال</button>
+        </h2>
+
+        <div style="margin-bottom: 12px;">
+          <label>نص بيانات الطالب والـ Row:</label>
+          <textarea id="studentText" placeholder="بيانات الطالب المسحوبة من الـ Row ستظهر هنا تلقائياً (أو يمكنك لصقها يدوياً)..."></textarea>
+        </div>
+
+        <label>صورة اسكرين التحويل (تُحمّل تلقائياً من لينك Drive في الشيت):</label>
+        <div class="drop-zone" id="dropZone" onclick="document.getElementById('receiptInput').click()">
+          <div id="dropText">📷 تُسحب تلقائياً من الشيت، أو اضغط لرفع صورة / <b>Ctrl + V</b></div>
+          <img id="previewImg" alt="Receipt Preview" />
+          <input type="file" id="receiptInput" accept="image/*" style="display:none" onchange="onFileSelected(this.files[0])" />
+        </div>
+
+        <button class="btn" id="btnAnalyze" style="width:100%; justify-content:center; padding:10px; font-size:14px;" onclick="analyzeOrder()">
+          🔍 فحص وتسجيل النص المكتوب أعلاه
+        </button>
+      </div>
+
+      <!-- Left Output & Decision Column -->
+      <div class="card">
+        <h2>نتيجة الفحص والتسجيل في السيستم</h2>
+        <div id="resultPlaceholder" style="color:var(--muted); text-align:center; padding:60px 20px;">
+          اكتب <b>رقم الـ Row</b> واضغط <b>"سحب بيانات الـ Row من الشيت وتسجيله فوراً"</b> ليقوم السيستم بقراءة الشيت وتحميل الاسكرين والبحث والتسجيل تلقائياً.
+        </div>
+
+        <div id="resultContainer" style="display:none;">
+          <!-- Dynamic Hard Case or Clean Case Box -->
+          <div id="decisionBanner"></div>
+
+          <!-- Extracted & Editable Fields -->
+          <h3 style="font-size:14px; margin: 12px 0 8px 0; color:#cbd5e1;">البيانات المستخرجة بالكود (تقدر تعدل أي خانة قبل التنفيذ):</h3>
+          <div class="extracted-grid">
+            <div class="field-card">
+              <span>اسم الطالب</span>
+              <input type="text" id="f_student_name" />
+            </div>
+            <div class="field-card">
+              <span>رقم الطالب</span>
+              <input type="text" id="f_student_phone" />
+            </div>
+            <div class="field-card">
+              <span>رقم ولي الأمر</span>
+              <input type="text" id="f_parent_phone" />
+            </div>
+            <div class="field-card">
+              <span>الشعبة / الصف / الكود</span>
+              <input type="text" id="f_section_code" />
+            </div>
+            <div class="field-card">
+              <span>نوع الاشتراك والمدة</span>
+              <input type="text" id="f_duration" />
+            </div>
+            <div class="field-card">
+              <span>المواد المستخرجة</span>
+              <input type="text" id="f_subjects" readonly />
+            </div>
+            <div class="field-card">
+              <span>المبلغ في الاسكرين (Paid Amount)</span>
+              <input type="number" id="f_paid_amount" />
+            </div>
+            <div class="field-card">
+              <span>السعر المتوقع في الجدول</span>
+              <input type="text" id="f_expected_price" readonly />
+            </div>
+            <div class="field-card">
+              <span>المحفظة المستلمة (الاسكرين / الشيت)</span>
+              <input type="text" id="f_receiving_wallet" />
+            </div>
+            <div class="field-card">
+              <span>الرقم المحول منه (Transfer Number)</span>
+              <input type="text" id="f_transfer_phone" />
+            </div>
+            <div class="field-card">
+              <span>كود العملية المرجعي (Transfer Code)</span>
+              <input type="text" id="f_transfer_code" />
+            </div>
+            <div class="field-card">
+              <span>تاريخ ووقت التحويل (24h)</span>
+              <input type="text" id="f_datetime" />
+            </div>
+            <div class="field-card">
+              <span>الأكشن المطلوب تنفيذه</span>
+              <select id="f_proposed_action">
+                <option value="ACTIVATE_NEW_WITH_DATA">تسجيل اشتراك جديد (Activate - With Data)</option>
+                <option value="RENEWAL_ACTIVATE_WITH_DATA">تجديد اشتراك (Activate - With Data)</option>
+                <option value="COMPLETE_WITHOUT_DATA">استكمال أوردر Without Data موجود</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Search Results Table -->
+          <div id="searchSummaryBox" style="margin-top:14px;"></div>
+
+          <!-- Preview Screenshot of Playwright if available -->
+          <div id="playwrightPreviewBox" style="margin-top:14px; display:none;">
+            <label>صورة حية من داخل سيستم المدفوعات بعد ملء البيانات:</label>
+            <img id="pwPreviewImg" style="max-width:100%; border-radius:10px; border:1px solid var(--card-border);" />
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB 2: PRICE LIST MANAGER -->
+    <div id="tabPrices" class="card" style="display:none;">
+      <h2>
+        <span>جدول أسعار الباقات والمواد (يُحفظ في prices.json)</span>
+        <div style="display:flex; gap:10px;">
+          <button class="btn btn-outline" onclick="addPriceRow()">+ إضافة صف سعر جديد</button>
+          <button class="btn btn-success" onclick="savePrices()">💾 حفظ تحديث الأسعار</button>
+        </div>
+      </h2>
+      <p style="color:var(--muted); font-size:13px; margin-top:0;">
+        بما أن الأسعار بتتغير كل فترة، تقدر تعدل أي رقم هنا مباشرة أو تبعتلي الأسعار الجديدة وهحدث الجدول ده فوراً.
+      </p>
+
+      <div style="overflow-x:auto;">
+        <table id="pricesTable">
+          <thead>
+            <tr>
+              <th>الكود</th>
+              <th>المرحلة</th>
+              <th>الصفوف</th>
+              <th>الشعبة (عام / لغات)</th>
+              <th>نوع الباقة (Content / Class)</th>
+              <th>المدة (شهر / ترم / سنة)</th>
+              <th>سعر المادة الواحدة</th>
+              <th>سعر كل المواد</th>
+              <th>سعر خصم الإخوات</th>
+              <th>الوصف</th>
+              <th>حذف</th>
+            </tr>
+          </thead>
+          <tbody id="pricesTbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const IS_LOCAL_HOST = (window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost');
+    const API_BASE = IS_LOCAL_HOST ? '' : 'http://127.0.0.1:5055';
+    let localAgentOnline = IS_LOCAL_HOST;
+    let selectedReceiptFile = null;
+    let currentCaseId = null;
+    let pricesData = {{ prices | tojson }};
+
+    async function checkLocalEngineStatus() {
+      try {
+        const res = await fetch(API_BASE + '/api/status', { method: 'GET' });
+        if (res.ok) {
+          const st = await res.json();
+          localAgentOnline = true;
+          const banner = document.getElementById('localEngineBanner');
+          if (banner) banner.style.display = 'none';
+          const pill = document.getElementById('connStatus');
+          if (pill && pill.innerText === 'جاهز للاتصال') {
+            pill.className = 'status-pill connected';
+            pill.innerText = st.username ? `متصل بجهازك (${st.username})` : 'متصل بمحرك جهازك';
+          }
+          if (st.username && !document.getElementById('loginUser').value) {
+            document.getElementById('loginUser').value = st.username;
+          }
+          if (st.sheet_url && !document.getElementById('sheetUrlInput').value) {
+            document.getElementById('sheetUrlInput').value = st.sheet_url;
+          }
+          return true;
+        }
+      } catch (e) {
+        localAgentOnline = false;
+        if (!IS_LOCAL_HOST) {
+          const banner = document.getElementById('localEngineBanner');
+          if (banner) banner.style.display = 'flex';
+        }
+      }
+      return false;
+    }
+    checkLocalEngineStatus();
+    if (!IS_LOCAL_HOST) setInterval(checkLocalEngineStatus, 5000);
+
+    function fetchSheetRowViaBrowserJSONP(sheetUrl, rowNumber) {
+      return new Promise((resolve) => {
+        const m = sheetUrl.match(/\/spreadsheets\/d\/([a-zA-Z0-9_-]{15,})/);
+        if (!m) return resolve(null);
+        const sheetId = m[1];
+        const gidM = sheetUrl.match(/[#?&]gid=(\d+)/);
+        const gid = gidM ? gidM[1] : '0';
+        const cbName = '_gviz_cb_' + Date.now() + '_' + Math.floor(Math.random() * 10000);
+        const offset = Math.max(0, parseInt(rowNumber, 10) - 2);
+        const tq = encodeURIComponent(`select * limit 1 offset ${offset}`);
+        const script = document.createElement('script');
+        const timer = setTimeout(() => {
+          cleanup();
+          resolve(null);
+        }, 6000);
+        function cleanup() {
+          clearTimeout(timer);
+          try { delete window[cbName]; } catch (e) {}
+          if (script.parentNode) script.parentNode.removeChild(script);
+        }
+        window[cbName] = function(resp) {
+          cleanup();
+          try {
+            if (resp && resp.table && resp.table.rows && resp.table.rows.length > 0) {
+              const cells = (resp.table.rows[0].c || []).map(c => {
+                if (!c) return '';
+                return (c.f != null ? String(c.f) : (c.v != null ? String(c.v) : '')).trim();
+              });
+              return resolve(cells);
+            }
+          } catch (e) {}
+          resolve(null);
+        };
+        script.onerror = () => { cleanup(); resolve(null); };
+        script.src = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?gid=${gid}&tq=${tq}&tqx=responseHandler:${cbName}`;
+        document.body.appendChild(script);
+      });
+    }
+
+    function switchTab(tab) {
+      document.getElementById('tabOrder').style.display = tab === 'order' ? 'grid' : 'none';
+      document.getElementById('tabPrices').style.display = tab === 'prices' ? 'block' : 'none';
+      document.getElementById('tabBtnOrder').classList.toggle('active', tab === 'order');
+      document.getElementById('tabBtnPrices').classList.toggle('active', tab === 'prices');
+      if (tab === 'prices') renderPricesTable();
+    }
+
+    function stepRow(delta) {
+      const inp = document.getElementById('rowNumberInput');
+      const cur = parseInt(inp.value, 10) || 2;
+      inp.value = Math.max(2, cur + delta);
+    }
+
+    async function saveSheetUrl() {
+      const sheet_url = document.getElementById('sheetUrlInput').value.trim();
+      if (!sheet_url) {
+        alert('يرجى وضع لينك الشيت أولاً');
+        return;
+      }
+      localStorage.setItem('elkheta_sheet_url', sheet_url);
+      try {
+        const res = await fetch(API_BASE + '/api/save-sheet', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({sheet_url})
+        });
+        const data = await res.json();
+        alert(data.message || 'تم حفظ اللينك');
+      } catch (e) {
+        alert('تم حفظ لينك الشيت على متصفحك بنجاح!');
+      }
+    }
+
+    async function processSheetRow() {
+      const sheet_url = document.getElementById('sheetUrlInput').value.trim();
+      const row_number = document.getElementById('rowNumberInput').value.trim();
+      if (!sheet_url) {
+        alert('يرجى وضع لينك شيت جوجل (Google Sheet URL) أولاً');
+        return;
+      }
+      if (!row_number) {
+        alert('يرجى كتابة رقم الـ Row (مثلاً: 15)');
+        return;
+      }
+
+      const btn = document.getElementById('btnProcessRow');
+      btn.disabled = true;
+      btn.innerText = `⏳ جاري سحب Row #${row_number} من الشيت وتحميل الاسكرين والتسجيل...`;
+      selectedReceiptFile = null;
+
+      try {
+        const client_row_cells = await fetchSheetRowViaBrowserJSONP(sheet_url, parseInt(row_number, 10));
+        const res = await fetch(API_BASE + '/api/process-row', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({
+            sheet_url,
+            row_number: parseInt(row_number, 10),
+            client_row_cells: client_row_cells,
+            do_live_search: document.getElementById('chkLiveSearch').checked,
+            auto_submit: document.getElementById('chkAutoSubmit').checked
+          })
+        });
+        const data = await res.json();
+        if (!data.success) {
+          alert(data.message || 'حدث خطأ أثناء قراءة الـ Row');
+          return;
+        }
+        if (data.sheet_row && data.sheet_row.combined_tsv) {
+          document.getElementById('studentText').value = data.sheet_row.combined_tsv;
+        }
+        renderAnalysisResult(data);
+      } catch (e) {
+        alert('يرجى تشغيل ملف (Run_Elkheta_Payment_Bot.bat) على جهازك أولاً ليتم الاتصال بمحرك المتصفح المحلي.\nتفاصيل: ' + e.message);
+      } finally {
+        btn.disabled = false;
+        btn.innerText = '🚀 سحب بيانات الـ Row من الشيت وتسجيله فوراً';
+      }
+    }
+
+    function fillSample() {
+      document.getElementById('studentText').value =
+`"آدم إبراهيم علي 
+01014587608
+01022202303
+تالته إعدادي عام
+01068888100
+ترم خطه كلاس رياضه "\thttps://drive.google.com/open?id=18cG-d_viA0I4I5wezVt-BIj38LX48hSn\t1093552965-#0016\t01068888100`;
+    }
+
+    function onFileSelected(file) {
+      if (!file) return;
+      selectedReceiptFile = file;
+      const reader = new FileReader();
+      reader.onload = e => {
+        const img = document.getElementById('previewImg');
+        img.src = e.target.result;
+        img.style.display = 'inline-block';
+        document.getElementById('dropText').innerHTML = `✅ تم اختيار الصورة: <b>${file.name}</b>`;
+      };
+      reader.readAsDataURL(file);
+    }
+
+    window.addEventListener('paste', e => {
+      const items = (e.clipboardData || e.originalEvent.clipboardData).items;
+      for (const item of items) {
+        if (item.type.indexOf('image') === 0) {
+          onFileSelected(item.getAsFile());
+          break;
+        }
+      }
+    });
+
+    async function doLogin() {
+      const username = document.getElementById('loginUser').value.trim();
+      const password = document.getElementById('loginPass').value.trim();
+      const btn = document.getElementById('btnLogin');
+      const status = document.getElementById('connStatus');
+      btn.disabled = true;
+      btn.innerText = 'جاري الدخول...';
+      try {
+        const res = await fetch(API_BASE + '/api/login', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({username, password})
+        });
+        const data = await res.json();
+        if (data.success) {
+          status.className = 'status-pill connected';
+          status.innerText = `متصل: ${data.username}`;
+        } else {
+          alert(data.message || 'فشل تسجيل الدخول');
+        }
+      } catch (err) {
+        alert('خطأ في الاتصال بالسيرفر المحلي');
+      } finally {
+        btn.disabled = false;
+        btn.innerText = 'تسجيل الدخول والربط';
+      }
+    }
+
+    async function analyzeOrder() {
+      const studentText = document.getElementById('studentText').value.trim();
+      if (!studentText) {
+        alert('يرجى إدخال نص بيانات الطالب أولاً أو استخدام رقم الـ Row بالأعلى');
+        return;
+      }
+      const btn = document.getElementById('btnAnalyze');
+      btn.disabled = true;
+      btn.innerText = '⏳ جاري قراءة الاسكرين والبحث والتسجيل في السيستم...';
+
+      const fd = new FormData();
+      fd.append('student_text', studentText);
+      fd.append('do_live_search', document.getElementById('chkLiveSearch').checked ? 'true' : 'false');
+      fd.append('auto_submit', document.getElementById('chkAutoSubmit').checked ? 'true' : 'false');
+      if (selectedReceiptFile) {
+        fd.append('receipt_image', selectedReceiptFile);
+      }
+
+      try {
+        const res = await fetch(API_BASE + '/api/analyze', { method: 'POST', body: fd });
+        const data = await res.json();
+        if (!data.success) {
+          alert(data.message || 'حدث خطأ');
+          return;
+        }
+        renderAnalysisResult(data);
+      } catch (e) {
+        alert('حدث خطأ أثناء الفحص: ' + e.message);
+      } finally {
+        btn.disabled = false;
+        btn.innerText = '🔍 فحص وتسجيل النص المكتوب أعلاه';
+      }
+    }
+
+    function renderAnalysisResult(data) {
+      currentCaseId = data.case_id;
+      document.getElementById('resultPlaceholder').style.display = 'none';
+      document.getElementById('resultContainer').style.display = 'block';
+
+      const st = data.student_info || {};
+      const rc = data.receipt_info || {};
+      const pr = data.price_info || {};
+      const dec = data.decision || {};
+      const ex = data.execution_result || null;
+
+      document.getElementById('f_student_name').value = st.student_name || '';
+      document.getElementById('f_student_phone').value = st.student_phone || '';
+      document.getElementById('f_parent_phone').value = st.parent_phone || '';
+      document.getElementById('f_section_code').value = `${st.education_type || ''} - ${st.grade_label || ''} (${st.section_code || ''})`;
+      document.getElementById('f_duration').value = `${st.package_tier || 'Content'} - ${st.duration || ''}`;
+      document.getElementById('f_subjects').value = (st.subjects_ar || []).join(' + ') || (st.is_full_bundle ? 'باقة كاملة (كل المواد)' : 'غير محدد');
+      document.getElementById('f_paid_amount').value = rc.paid_amount != null ? rc.paid_amount : '';
+      document.getElementById('f_expected_price').value = pr.expected_price != null ? `${pr.expected_price} ج (${pr.explanation || ''})` : 'غير معروف في الجدول';
+      const wTag = st.sheet_wallet_tag ? ` (${st.sheet_wallet_tag})` : '';
+      document.getElementById('f_receiving_wallet').value = (rc.receiving_wallet_phone || st.sheet_wallet_phone || '') + wTag;
+      document.getElementById('f_transfer_phone').value = st.transfer_phone || rc.transfer_phone || '';
+      document.getElementById('f_transfer_code').value = rc.transfer_code || '';
+      document.getElementById('f_datetime').value = rc.paid_time || rc.raw_datetime || '';
+      document.getElementById('f_proposed_action').value = dec.proposed_action || 'ACTIVATE_NEW_WITH_DATA';
+
+      if (data.receipt_url && !selectedReceiptFile) {
+        const img = document.getElementById('previewImg');
+        img.src = data.receipt_url.startsWith('http') ? data.receipt_url : (API_BASE + data.receipt_url);
+        img.style.display = 'inline-block';
+        document.getElementById('dropText').innerHTML = `✅ تم تحميل صورة الاسكرين تلقائياً من Google Drive`;
+      }
+
+      const rowBadge = data.row_number ? ` (Row #${data.row_number})` : '';
+      const banner = document.getElementById('decisionBanner');
+      if (dec.is_hard_case) {
+        const reasonsHtml = (dec.hard_case_reasons || []).map(r => `<li>${r}</li>`).join('');
+        banner.innerHTML = `
+          <div class="hard-case-box">
+            <h3>⚠️ حالة تحتاج مراجعتك${rowBadge} (Hard Case) — تم إيقاف التسجيل التلقائي</h3>
+            <ul>${reasonsHtml}</ul>
+            <div style="font-size:13px; margin-bottom:12px; color:#f8fafc;">
+              <b>الأكشن المقترح من السيستم:</b> ${dec.proposed_action_ar}
+            </div>
+            <div style="display:flex; flex-wrap:wrap; gap:10px;">
+              <button class="btn btn-success" id="btnIgnoreSubmit" onclick="ignoreAndExecute(true)">
+                🚀 Ignore & Submit (موافق على اللي هتعمله — نفّذ واحفظ الأوردر فوراً)
+              </button>
+              <button class="btn btn-warning" id="btnIgnorePreview" onclick="ignoreAndExecute(false)">
+                👍 Ignore (املأ الفورم للمعاينة بدون حفظ نهائي)
+              </button>
+            </div>
+          </div>
+        `;
+      } else {
+        const execMsg = ex
+          ? (ex.submitted ? `✅ ${ex.message}` : `ℹ️ ${ex.message || ex.error || ''}`)
+          : 'جميع البيانات والأسعار مطابقة ولا توجد تعارضات في السيرش.';
+        banner.innerHTML = `
+          <div class="clean-case-box">
+            <h3>✅ حالة سليمة وواضحة${rowBadge} — ${dec.proposed_action_ar}</h3>
+            <p style="margin:4px 0 10px 0; font-size:13.5px; font-weight:700;">${execMsg}</p>
+            <div style="display:flex; gap:10px;">
+              <button class="btn btn-success" onclick="ignoreAndExecute(true)">🚀 إعادة التنفيذ والحفظ النهائي (Submit Payment)</button>
+              <button class="btn btn-outline" onclick="ignoreAndExecute(false)">معاينة الفورم فقط</button>
+            </div>
+          </div>
+        `;
+      }
+
+      const sBox = document.getElementById('searchSummaryBox');
+      if (dec.search_history && dec.search_history.length > 0) {
+        let rowsHtml = dec.search_history.map(s => `
+          <tr>
+            <td>${s.label}</td>
+            <td><code>${s.query}</code></td>
+            <td>${s.found_count > 0 ? `<span class="badge badge-warn">تم العثور على ${s.found_count} عملية</span>` : `<span class="badge badge-ok">لا يوجد (جديد)</span>`}</td>
+          </tr>
+        `).join('');
+        sBox.innerHTML = `
+          <h3 style="font-size:14px; margin: 12px 0 6px 0; color:#cbd5e1;">نتيجة البحث في All Payments:</h3>
+          <table>
+            <thead><tr><th>نوع البحث</th><th>القيمة</th><th>النتيجة في السيستم</th></tr></thead>
+            <tbody>${rowsHtml}</tbody>
+          </table>
+        `;
+      } else {
+        sBox.innerHTML = '';
+      }
+
+      if (ex && ex.preview_image) {
+        document.getElementById('playwrightPreviewBox').style.display = 'block';
+        document.getElementById('pwPreviewImg').src = ex.preview_image.startsWith('http') ? ex.preview_image : (API_BASE + ex.preview_image);
+      } else {
+        document.getElementById('playwrightPreviewBox').style.display = 'none';
+      }
+    }
+
+    async function ignoreAndExecute(autoSubmit) {
+      if (!currentCaseId) return;
+      const rawWallet = document.getElementById('f_receiving_wallet').value.trim().split(' ')[0];
+      const overrides = {
+        student_name: document.getElementById('f_student_name').value.trim(),
+        student_phone: document.getElementById('f_student_phone').value.trim(),
+        parent_phone: document.getElementById('f_parent_phone').value.trim(),
+        transfer_phone: document.getElementById('f_transfer_phone').value.trim(),
+        paid_amount: parseFloat(document.getElementById('f_paid_amount').value) || 0,
+        receiving_wallet_phone: rawWallet,
+        transfer_code: document.getElementById('f_transfer_code').value.trim(),
+        proposed_action: document.getElementById('f_proposed_action').value
+      };
+
+      const btnSub = document.getElementById('btnIgnoreSubmit');
+      if (btnSub) {
+        btnSub.disabled = true;
+        btnSub.innerText = '⏳ جاري فتح السيستم وملء جميع الخانات...';
+      }
+
+      try {
+        const res = await fetch(API_BASE + '/api/ignore-and-execute', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({
+            case_id: currentCaseId,
+            auto_submit: autoSubmit,
+            overrides: overrides
+          })
+        });
+        const data = await res.json();
+        if (!data.success) {
+          alert(data.message || 'حدث خطأ أثناء التنفيذ');
+          return;
+        }
+        const ex = data.execution_result || {};
+        alert(ex.message || ex.error || 'تم التنفيذ');
+        if (ex.preview_image) {
+          document.getElementById('playwrightPreviewBox').style.display = 'block';
+          document.getElementById('pwPreviewImg').src = ex.preview_image.startsWith('http') ? ex.preview_image : (API_BASE + ex.preview_image);
+        }
+      } finally {
+        if (btnSub) {
+          btnSub.disabled = false;
+          btnSub.innerText = '🚀 Ignore & Submit (موافق على اللي هتعمله — نفّذ واحفظ الأوردر فوراً)';
+        }
+      }
+    }
+
+    function renderPricesTable() {
+      const tbody = document.getElementById('pricesTbody');
+      tbody.innerHTML = '';
+      (pricesData.rules || []).forEach((r, idx) => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td><input type="text" value="${r.id || ''}" onchange="pricesData.rules[${idx}].id=this.value" /></td>
+          <td><input type="text" value="${r.stage || ''}" onchange="pricesData.rules[${idx}].stage=this.value" /></td>
+          <td><input type="text" value="${r.grade || ''}" onchange="pricesData.rules[${idx}].grade=this.value" /></td>
+          <td><input type="text" value="${r.education_type || ''}" onchange="pricesData.rules[${idx}].education_type=this.value" /></td>
+          <td><input type="text" value="${r.package_tier || 'Content'}" onchange="pricesData.rules[${idx}].package_tier=this.value" /></td>
+          <td><input type="text" value="${r.duration || ''}" onchange="pricesData.rules[${idx}].duration=this.value" /></td>
+          <td><input type="number" value="${r.unit_price ?? ''}" onchange="pricesData.rules[${idx}].unit_price=this.value?parseFloat(this.value):null" /></td>
+          <td><input type="number" value="${r.all_subjects_price ?? ''}" onchange="pricesData.rules[${idx}].all_subjects_price=this.value?parseFloat(this.value):null" /></td>
+          <td><input type="number" value="${r.sibling_bundle_price ?? ''}" onchange="pricesData.rules[${idx}].sibling_bundle_price=this.value?parseFloat(this.value):null" /></td>
+          <td><input type="text" value="${r.description || ''}" onchange="pricesData.rules[${idx}].description=this.value" /></td>
+          <td><button class="btn btn-outline" style="padding:4px 8px;" onclick="pricesData.rules.splice(${idx},1);renderPricesTable()">✕</button></td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    function addPriceRow() {
+      pricesData.rules = pricesData.rules || [];
+      pricesData.rules.push({
+        id: 'NEW-RULE',
+        stage: 'إعدادي',
+        grade: 'M1,M2,M3',
+        education_type: 'عام',
+        package_tier: 'Content',
+        duration: 'شهر',
+        unit_price: 130,
+        all_subjects_price: 600,
+        sibling_bundle_price: null,
+        description: 'وصف القاعدة'
+      });
+      renderPricesTable();
+    }
+
+    async function savePrices() {
+      const res = await fetch(API_BASE + '/api/prices', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(pricesData)
+      });
+      const data = await res.json();
+      alert(data.message || 'تم الحفظ');
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+Browser_Session_Chrome/
+uploads/
+static/last_preview.png
+config.json
+.env
