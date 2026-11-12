@@ -136,14 +136,26 @@ class ElkhetaPaymentBot:
         found_orders = []
         remaining_records = []
 
-        student_phone = clean_phone(student_info.get("student_phone", ""))
+        students_list = student_info.get("students_list") or []
+        raw_st_phone = student_info.get("student_phone", "")
+        st_phones = []
+        for p in re.findall(r"01[0125]\d{8}", str(raw_st_phone)):
+            if p not in st_phones:
+                st_phones.append(p)
+        for st in students_list:
+            cp = clean_phone(st.get("student_phone", ""))
+            if re.match(r"^01[0125]\d{8}$", cp) and cp not in st_phones:
+                st_phones.append(cp)
+
+        student_phone = st_phones[0] if st_phones else clean_phone(raw_st_phone)
         parent_phone = clean_phone(student_info.get("parent_phone", ""))
         transfer_phone = clean_phone(student_info.get("transfer_phone", "") or receipt_info.get("sender_identifier", ""))
         transfer_code = (receipt_info.get("transfer_code", "") or "").strip()
 
         search_queries = []
-        if student_phone:
-            search_queries.append(("رقم الطالب", student_phone))
+        for idx_p, sp in enumerate(st_phones):
+            lbl = "رقم الطالب" if len(st_phones) == 1 else f"رقم الطالب ({idx_p + 1})"
+            search_queries.append((lbl, sp))
         if parent_phone and parent_phone not in [q[1] for q in search_queries]:
             search_queries.append(("رقم ولي الأمر", parent_phone))
         if transfer_phone and re.match(r"^01[0125]\d{8}$", transfer_phone) and transfer_phone not in [q[1] for q in search_queries]:
@@ -510,85 +522,121 @@ class ElkhetaPaymentBot:
         return False
 
     def _build_order_items(self, dialog, student_info: dict):
-        """Completes the Order Builder section for either a Full Bundle or 1+ Single Subjects."""
+        """
+        Completes the Order Builder section for 1 or more students (e.g. 2 siblings in the same transfer),
+        supporting either a Full Bundle or 1+ Single Subjects per student, and setting Current Price when discounted.
+        """
         self._expand_section(dialog, "Order Builder", "button:has-text('Add Product')")
 
-        edu_type = student_info.get("education_type", "عام")
-        section_code = student_info.get("section_code", "")
-        grade_code = student_info.get("grade_code", "")
-        edu_code = student_info.get("edu_code", "AR")
-        package_tier = student_info.get("package_tier", "Content")
-        duration_code = student_info.get("duration_code", "Month")
-        subjects = student_info.get("subjects") or []
-        is_full_bundle = student_info.get("is_full_bundle", True) or (len(subjects) == 0)
+        raw_students_list = student_info.get("students_list") or []
+        if len(raw_students_list) <= 1:
+            students_to_register = [student_info]
+        else:
+            students_to_register = [dict(s) for s in raw_students_list]
+            # Sync any manual UI edits to names / phones if separated by '+' or '-'
+            ui_names = [n.strip() for n in str(student_info.get("student_name", "")).split("+") if n.strip()]
+            ui_phones = re.findall(r"01[0125]\d{8}", str(student_info.get("student_phone", "")))
+            for i, st in enumerate(students_to_register):
+                if i < len(ui_names):
+                    st["student_name"] = ui_names[i]
+                if i < len(ui_phones):
+                    st["student_phone"] = ui_phones[i]
 
-        student_name = clean_student_name_str(student_info.get("student_name", ""))
-        student_phone = clean_phone(student_info.get("student_phone", ""))
+        item_index = 0
+        for st in students_to_register:
+            edu_type = st.get("education_type", "عام")
+            section_code = st.get("section_code", "")
+            grade_code = st.get("grade_code", "")
+            edu_code = st.get("edu_code", "AR")
+            package_tier = st.get("package_tier", "Content")
+            duration_code = st.get("duration_code", "Month")
+            subjects = st.get("subjects") or []
+            is_full_bundle = st.get("is_full_bundle", True) or (len(subjects) == 0)
 
-        items_to_add = [None] if is_full_bundle else subjects
+            student_name = clean_student_name_str(st.get("student_name", ""))
+            raw_ph = str(st.get("student_phone", ""))
+            ph_matches = re.findall(r"01[0125]\d{8}", raw_ph)
+            student_phone = ph_matches[0] if ph_matches else clean_phone(raw_ph)
 
-        for subj_code in items_to_add:
-            # 1. Click 'Add Product' if Language buttons aren't already open
-            add_prod_btn = dialog.locator("button:has-text('Add Product')").first
-            if add_prod_btn.count() > 0 and add_prod_btn.is_visible():
-                add_prod_btn.scroll_into_view_if_needed()
-                add_prod_btn.click()
-                time.sleep(0.5)
+            items_to_add = [None] if is_full_bundle else subjects
 
-            # 2. Select Language (عام / لغات / مشترك)
-            lang_btn = dialog.locator(f"button:text-is('{edu_type}'), button:has-text('{edu_type}')").first
-            if lang_btn.count() > 0:
-                lang_btn.scroll_into_view_if_needed()
-                lang_btn.click()
-                time.sleep(0.4)
+            for subj_code in items_to_add:
+                # 1. Click 'Add Product' if Language buttons aren't already open
+                add_prod_btn = dialog.locator("button:has-text('Add Product')").first
+                if add_prod_btn.count() > 0 and add_prod_btn.is_visible():
+                    add_prod_btn.scroll_into_view_if_needed()
+                    add_prod_btn.click()
+                    time.sleep(0.5)
 
-            # 3. Select Class / Section (e.g. S1-EN, M3-AR, S2-AR-Baccalaureate)
-            clicked_class = False
-            class_candidates = []
-            if section_code:
-                class_candidates.append(section_code)
-            if grade_code and edu_code:
-                class_candidates.append(f"{grade_code}-{edu_code}")
-            if grade_code == "BC":
-                class_candidates.extend([f"S2-{edu_code}-Baccalaureate", "Baccalaureate", f"S1-{edu_code}"])
-
-            for c_code in class_candidates:
-                c_btn = dialog.locator(f"button:text-is('{c_code}'), button:has-text('{c_code}')").first
-                if c_btn.count() > 0:
-                    c_btn.scroll_into_view_if_needed()
-                    c_btn.click()
+                # 2. Select Language (عام / لغات / مشترك)
+                lang_btn = dialog.locator(f"button:text-is('{edu_type}'), button:has-text('{edu_type}')").first
+                if lang_btn.count() > 0:
+                    lang_btn.scroll_into_view_if_needed()
+                    lang_btn.click()
                     time.sleep(0.4)
-                    clicked_class = True
-                    break
 
-            # 4. Select Package button (Content/Follow up - Month/Term/Year or Subject - ...)
-            self._click_package_button(dialog, is_full_bundle=(subj_code is None), package_tier=package_tier, duration_code=duration_code)
+                # 3. Select Class / Section (e.g. S1-EN, M3-AR, S2-AR-Baccalaureate)
+                class_candidates = []
+                if section_code:
+                    class_candidates.append(section_code)
+                if grade_code and edu_code:
+                    class_candidates.append(f"{grade_code}-{edu_code}")
+                if grade_code == "BC":
+                    class_candidates.extend([f"S2-{edu_code}-Baccalaureate", "Baccalaureate", f"S1-{edu_code}"])
 
-            # 5. If Single Subject, select the Subject button
-            if subj_code is not None:
-                self._click_subject_button(dialog, subj_code)
+                for c_code in class_candidates:
+                    c_btn = dialog.locator(f"button:text-is('{c_code}'), button:has-text('{c_code}')").first
+                    if c_btn.count() > 0:
+                        c_btn.scroll_into_view_if_needed()
+                        c_btn.click()
+                        time.sleep(0.4)
+                        break
 
-            # 6. Fill Student Name * and Student Phone *
-            name_inp = dialog.locator("input[placeholder*='Enter student name' i], input[placeholder*='student name' i]").first
-            if name_inp.count() > 0:
-                name_inp.scroll_into_view_if_needed()
-                name_inp.fill(student_name)
-                time.sleep(0.2)
+                # 4. Select Package button (Content/Follow up - Month/Term/Year or Subject - ...)
+                self._click_package_button(dialog, is_full_bundle=(subj_code is None), package_tier=package_tier, duration_code=duration_code)
 
-            phone_inp = dialog.locator("input[placeholder*='01xxxxxxxxx' i]").first
-            if phone_inp.count() > 0:
-                phone_inp.scroll_into_view_if_needed()
-                phone_inp.fill(student_phone)
-                time.sleep(0.2)
+                # 5. If Single Subject, select the Subject button
+                if subj_code is not None:
+                    self._click_subject_button(dialog, subj_code)
 
-            # 7. Click 'Add order' button to commit the item into Order Items
-            add_order_btn = dialog.locator("button:has-text('Add order')").first
-            if add_order_btn.count() > 0:
-                add_order_btn.scroll_into_view_if_needed()
-                time.sleep(0.3)
-                if not add_order_btn.is_disabled():
-                    add_order_btn.click()
-                    time.sleep(0.6)
+                # 6. Fill Student Name * and Student Phone *
+                name_inp = dialog.locator("input[placeholder*='Enter student name' i], input[placeholder*='student name' i]").first
+                if name_inp.count() > 0:
+                    name_inp.scroll_into_view_if_needed()
+                    name_inp.fill(student_name)
+                    time.sleep(0.2)
+
+                phone_inp = dialog.locator("input[placeholder*='01xxxxxxxxx' i]").first
+                if phone_inp.count() > 0:
+                    phone_inp.scroll_into_view_if_needed()
+                    phone_inp.fill(student_phone)
+                    time.sleep(0.2)
+
+                # 7. Click 'Add order' button to commit the item into Order Items
+                add_order_btn = dialog.locator("button:has-text('Add order')").first
+                if add_order_btn.count() > 0:
+                    add_order_btn.scroll_into_view_if_needed()
+                    time.sleep(0.3)
+                    if not add_order_btn.is_disabled():
+                        add_order_btn.click()
+                        time.sleep(0.6)
+
+                # 8. If student has a discounted price (e.g. Sibling Discount 800 instead of 1050), update Current Price
+                st_expected = st.get("expected_price")
+                st_bundle = st.get("bundle_price")
+                if subj_code is None and st_expected is not None and (st.get("is_sibling") or (st_bundle and float(st_expected) < float(st_bundle))):
+                    try:
+                        cur_price_inputs = dialog.locator("label:has-text('Current Price') ~ input, label:has-text('Current Price') ~ div input")
+                        if cur_price_inputs.count() > item_index:
+                            cp_inp = cur_price_inputs.nth(item_index)
+                            cp_inp.scroll_into_view_if_needed()
+                            cp_str = str(int(float(st_expected)) if float(st_expected).is_integer() else st_expected)
+                            cp_inp.fill(cp_str)
+                            time.sleep(0.2)
+                    except Exception:
+                        pass
+
+                item_index += 1
 
     def execute_order(
         self,

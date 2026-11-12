@@ -536,16 +536,86 @@ def download_drive_image(drive_file_id: str, upload_dir: str) -> str:
     return ""
 
 
-def parse_student_text(raw_text: str) -> dict:
-    """
-    Pure deterministic parser for student registration messages AND Google Sheet rows.
-    """
-    if not raw_text:
-        return {}
+def _has_grade_in_text(txt: str) -> bool:
+    norm = normalize_arabic(normalize_digits(txt))
+    for pat, _, _ in GRADE_PATTERNS:
+        if re.search(pat, norm, re.IGNORECASE):
+            return True
+    return False
 
-    sheet_cols = extract_sheet_columns(raw_text)
-    clean_block = sheet_cols["student_block"] or raw_text.strip()
 
+def _has_phone_in_text(txt: str) -> bool:
+    norm = collapse_spaced_phones(normalize_digits(txt))
+    return bool(re.search(r"(?:00201|\+?201|0?1)[0125]\d{8}", norm))
+
+
+def _is_pure_student_name_line(line: str) -> bool:
+    """Returns True if the line looks like an unlabeled standalone Arabic student name (2-5 words, no digits/keywords)."""
+    cand = line.strip().strip("*").strip("-").strip(":").strip()
+    if not cand or re.search(r"\d", cand):
+        return False
+    words = cand.split()
+    if not (2 <= len(words) <= 5):
+        return False
+    norm_c = normalize_arabic(cand)
+    non_name_keywords = [
+        "ابتدائي", "اعدادي", "ثانوي", "بكالوريا", "بكلوريا", "خطه", "كلاس", "محتوي",
+        "شهر", "ترم", "سنه", "المواد", "التخصص", "باقه", "ولي الامر", "طالب", "طالبه",
+        "خصم", "اخوات", "اشتراك", "جميع", "شامل", "تحويل", "فودافون", "انستا", "عربي",
+        "لغات", "عام", "علمي", "ادبي", "تليفون", "تلفون", "موبايل", "واتس", "الاسم",
+        "باندل", "بندل", "بادل", "باكدج", "باكج", "ماده", "فقط"
+    ]
+    if any(k in norm_c for k in non_name_keywords):
+        return False
+    return True
+
+
+def _split_student_blocks(clean_block: str) -> list:
+    """
+    Splits a Google Sheet student cell into multiple student text blocks if 2+ siblings/students
+    are written inside the same cell (either via repeated 'اسم الطالب' labels or sequential blocks).
+    """
+    text = collapse_spaced_phones(normalize_digits(clean_block.strip()))
+    raw_lines = [line.strip().strip('"').strip("\\").strip() for line in text.splitlines()]
+    lines = [l for l in raw_lines if l and not re.match(r"^[\.\-_=\*]{3,}$", l)]
+    if len(lines) < 4:
+        return [clean_block]
+
+    split_indices = [0]
+    for idx in range(1, len(lines)):
+        line = lines[idx]
+        norm_line = normalize_arabic(line)
+        prev_text = "\n".join(lines[split_indices[-1]:idx])
+        rest_text = "\n".join(lines[idx:])
+
+        # Case 1: Explicit 'اسم الطالب' / 'اسم الطالبة' header for a second student
+        if re.match(r"^(?:اسم\s*الطالبة|اسم\s*الطالبه|اسم\s*الطالب)\b", norm_line):
+            if _has_phone_in_text(prev_text) or _has_grade_in_text(prev_text):
+                if _has_phone_in_text(rest_text) or _has_grade_in_text(rest_text):
+                    split_indices.append(idx)
+                    continue
+
+        # Case 2: Unlabeled second student block (e.g. Row 2877: Name + Grade + Phone + Package)
+        if _is_pure_student_name_line(line):
+            if _has_phone_in_text(prev_text) and _has_grade_in_text(prev_text):
+                if _has_phone_in_text(rest_text) and _has_grade_in_text(rest_text):
+                    split_indices.append(idx)
+                    continue
+
+    if len(split_indices) <= 1:
+        return [clean_block]
+
+    blocks = []
+    for i, start_idx in enumerate(split_indices):
+        end_idx = split_indices[i + 1] if i + 1 < len(split_indices) else len(lines)
+        blk = "\n".join(lines[start_idx:end_idx]).strip()
+        if blk:
+            blocks.append(blk)
+    return blocks if len(blocks) > 1 else [clean_block]
+
+
+def _parse_single_student_block(clean_block: str, sheet_cols: dict) -> dict:
+    """Parses a single student block into structured fields."""
     # Collapse spaces inside phone numbers (e.g. '012 00181577' -> '01200181577')
     text = collapse_spaced_phones(normalize_digits(clean_block.strip()))
     norm_text = normalize_arabic(text)
@@ -819,6 +889,70 @@ def parse_student_text(raw_text: str) -> dict:
     }
 
 
+def parse_student_text(raw_text: str) -> dict:
+    """
+    Pure deterministic parser for student registration messages AND Google Sheet rows.
+    Supports both single-student cells and multi-student (sibling) cells in the same row.
+    """
+    if not raw_text:
+        return {}
+
+    sheet_cols = extract_sheet_columns(raw_text)
+    clean_block = sheet_cols["student_block"] or raw_text.strip()
+    blocks = _split_student_blocks(clean_block)
+
+    if len(blocks) <= 1:
+        single = _parse_single_student_block(clean_block, sheet_cols)
+        single["students_list"] = [dict(single)]
+        single["students_count"] = 1
+        return single
+
+    # Multi-student (Sibling) cell: parse each block individually
+    overall = _parse_single_student_block(clean_block, sheet_cols)
+    students_list = []
+    for blk in blocks:
+        st = _parse_single_student_block(blk, sheet_cols)
+        if overall.get("is_sibling"):
+            st["is_sibling"] = True
+        if not st.get("academic_year") and overall.get("academic_year"):
+            st["academic_year"] = overall["academic_year"]
+        if not st.get("grade_code") and overall.get("grade_code"):
+            st["grade_code"] = overall["grade_code"]
+            st["grade_label"] = overall["grade_label"]
+            st["section_code"] = overall["section_code"]
+            st["display_section"] = overall["display_section"]
+        students_list.append(st)
+
+    # Determine explicit parent phone across the whole block if present, else use transfer_phone or first student phone
+    explicit_parent_phone = ""
+    for line in collapse_spaced_phones(normalize_digits(clean_block)).splitlines():
+        norm_l = normalize_arabic(line)
+        if any(k in norm_l for k in ["ولي الامر", "ولي أمر", "وليه الامر", "وبلي الامر", "parent"]):
+            phs = [clean_phone(p) for p in re.findall(r"(?:00201|\+?201|0?1)[0125]\d{8}", line) if clean_phone(p)]
+            if phs:
+                explicit_parent_phone = phs[-1]
+                break
+
+    student_phones = [s["student_phone"] for s in students_list if s.get("student_phone")]
+    parent_phone = (
+        explicit_parent_phone
+        or sheet_cols.get("sheet_transfer_number", "")
+        or (student_phones[0] if student_phones else "")
+    )
+    for st in students_list:
+        st["parent_phone"] = parent_phone
+
+    combined = dict(students_list[0])
+    combined["students_list"] = students_list
+    combined["students_count"] = len(students_list)
+    combined["student_name"] = " + ".join([s["student_name"] for s in students_list if s.get("student_name")])
+    combined["student_phone"] = " - ".join(student_phones)
+    combined["parent_phone"] = parent_phone
+    combined["display_section"] = " + ".join([s["display_section"] for s in students_list if s.get("display_section")])
+    combined["is_sibling"] = any(s.get("is_sibling") for s in students_list) or overall.get("is_sibling", False)
+    return combined
+
+
 def run_windows_ocr(image_path: str) -> dict:
     """Runs native Windows.Media.Ocr via ocr_engine.ps1 and returns extracted text."""
     script_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ocr_engine.ps1")
@@ -1031,11 +1165,8 @@ def parse_receipt_image(image_path: str) -> dict:
     }
 
 
-def calculate_expected_price(student_info: dict, prices_data: dict, paid_amount: float = None) -> dict:
-    """
-    Matches student_info against prices.json rules (including Content vs Class,
-    special subject prices like French/German and Baccalaureate, and Sibling Discounts).
-    """
+def _calculate_single_student_price(student_info: dict, prices_data: dict, paid_amount: float = None) -> dict:
+    """Calculates expected price for a single student dictionary."""
     rules = prices_data.get("rules", [])
     grade = student_info.get("grade_code", "")
     edu_type = student_info.get("education_type", "عام")
@@ -1062,6 +1193,8 @@ def calculate_expected_price(student_info: dict, prices_data: dict, paid_amount:
             "matched_rule_id": None,
             "expected_price": None,
             "sibling_price": None,
+            "bundle_price": None,
+            "unit_price": None,
             "explanation": "لم يتم العثور على قاعدة سعر مطابقة في جدول الأسعار الحالي"
         }
 
@@ -1098,4 +1231,73 @@ def calculate_expected_price(student_info: dict, prices_data: dict, paid_amount:
         "bundle_price": float(bundle_price) if bundle_price is not None else None,
         "unit_price": float(unit_price) if unit_price is not None else None,
         "explanation": reason
+    }
+
+
+def calculate_expected_price(student_info: dict, prices_data: dict, paid_amount: float = None) -> dict:
+    """
+    Matches student_info against prices.json rules (including Content vs Class,
+    special subject prices like French/German and Baccalaureate, Sibling Discounts,
+    and Multi-Student / Sibling combined orders in the same cell).
+    """
+    students_list = student_info.get("students_list") or []
+    if len(students_list) <= 1:
+        res = _calculate_single_student_price(student_info, prices_data, paid_amount)
+        if len(students_list) == 1:
+            students_list[0]["expected_price"] = res.get("expected_price")
+            students_list[0]["bundle_price"] = res.get("bundle_price")
+        return res
+
+    # Multi-student calculation
+    total_expected = 0.0
+    total_sibling = 0.0
+    total_bundle = 0.0
+    all_valid = True
+    parts_desc = []
+    per_student_results = []
+
+    for st in students_list:
+        r = _calculate_single_student_price(st, prices_data, None)
+        per_student_results.append((st, r))
+        if r.get("expected_price") is None:
+            all_valid = False
+        else:
+            total_expected += float(r["expected_price"])
+        if r.get("sibling_price") is not None:
+            total_sibling += float(r["sibling_price"])
+        elif r.get("expected_price") is not None:
+            total_sibling += float(r["expected_price"])
+        if r.get("bundle_price") is not None:
+            total_bundle += float(r["bundle_price"])
+
+    # If paid_amount matches total_sibling (even if sibling keyword wasn't caught on one block), switch to sibling prices
+    use_sibling_sum = (
+        all_valid
+        and paid_amount is not None
+        and total_sibling > 0
+        and abs(float(paid_amount) - total_sibling) < 0.01
+        and abs(total_expected - total_sibling) > 0.01
+    )
+
+    final_total = 0.0
+    for st, r in per_student_results:
+        st_price = r.get("sibling_price") if (use_sibling_sum and r.get("sibling_price") is not None) else r.get("expected_price")
+        st["expected_price"] = st_price
+        st["bundle_price"] = r.get("bundle_price")
+        if st_price is not None:
+            final_total += float(st_price)
+            s_name = st.get("student_name") or st.get("grade_label") or "طالب"
+            parts_desc.append(f"{s_name}: {int(st_price) if float(st_price).is_integer() else st_price} ج")
+
+    is_sib = student_info.get("is_sibling") or use_sibling_sum
+    sib_tag = " بخصم الإخوات" if is_sib else ""
+    explanation = f"{len(students_list)} طلاب{sib_tag} ({' + '.join(parts_desc)})"
+
+    return {
+        "matched_rule_id": "MULTI_STUDENT",
+        "expected_price": final_total if all_valid else None,
+        "sibling_price": total_sibling if all_valid else None,
+        "bundle_price": total_bundle if all_valid else None,
+        "unit_price": None,
+        "explanation": explanation
     }
