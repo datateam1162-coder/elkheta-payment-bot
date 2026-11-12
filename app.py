@@ -2,6 +2,8 @@ import os
 import sys
 
 for _extra_site in [
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "Lib", "site-packages"),
+    r"C:\Mahmmoud\Lib\site-packages",
     r"C:\Users\ROOT\AppData\Local\Programs\antigravity\Lib\site-packages",
     r"C:\Users\ROOT\AppData\Roaming\Python\Python314\site-packages",
     r"C:\Users\ROOT\.gemini\antigravity\scratch\whatsapp-sender\Lib\site-packages",
