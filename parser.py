@@ -51,7 +51,12 @@ def clean_phone(p: str) -> str:
             pass
     if p.endswith(".0"):
         p = p[:-2]
-    p = re.sub(r"[^\d]", "", p)
+    # If the string contains multiple phone numbers (e.g. "01557516176 - 01026098395"), extract the first valid phone
+    multi_m = re.search(r"(?:00201|\+?201|0?1)[0125]\d{8}", p)
+    if multi_m:
+        p = re.sub(r"[^\d]", "", multi_m.group(0))
+    else:
+        p = re.sub(r"[^\d]", "", p)
     if p.startswith("00201") and len(p) == 14:
         p = "0" + p[4:]
     elif p.startswith("201") and len(p) == 12:

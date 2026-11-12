@@ -154,7 +154,14 @@ class ElkhetaPaymentBot:
 
         search_queries = []
         for idx_p, sp in enumerate(st_phones):
-            lbl = "رقم الطالب" if len(st_phones) == 1 else f"رقم الطالب ({idx_p + 1})"
+            if len(st_phones) == 1:
+                lbl = "رقم الطالب"
+            else:
+                st_nm = ""
+                if idx_p < len(students_list):
+                    full_nm = (students_list[idx_p].get("student_name") or "").strip()
+                    st_nm = full_nm.split()[0] if full_nm else ""
+                lbl = f"رقم الطالب ({st_nm})" if st_nm else f"رقم الطالب ({idx_p + 1})"
             search_queries.append((lbl, sp))
         if parent_phone and parent_phone not in [q[1] for q in search_queries]:
             search_queries.append(("رقم ولي الأمر", parent_phone))

@@ -270,6 +270,8 @@ def api_process_row():
 
     try:
         importlib.reload(parser)
+        importlib.reload(playwright_bot)
+        bot.__class__ = playwright_bot.ElkhetaPaymentBot
         client_cells = data.get("client_row_cells")
         if client_cells and isinstance(client_cells, list) and any(str(c).strip() for c in client_cells):
             sheet_row = parser.build_sheet_row_dict(row_number, client_cells)
@@ -324,6 +326,8 @@ def api_analyze():
 
     try:
         importlib.reload(parser)
+        importlib.reload(playwright_bot)
+        bot.__class__ = playwright_bot.ElkhetaPaymentBot
         student_info = parser.parse_student_text(student_text)
         res = _run_full_pipeline(
             student_info=student_info,
@@ -370,6 +374,9 @@ def api_ignore_and_execute():
             receipt_info[k] = overrides[k]
 
     try:
+        importlib.reload(parser)
+        importlib.reload(playwright_bot)
+        bot.__class__ = playwright_bot.ElkhetaPaymentBot
         res = bot.execute_order(
             student_info=student_info,
             receipt_info=receipt_info,
