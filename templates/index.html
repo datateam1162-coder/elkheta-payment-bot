@@ -871,13 +871,25 @@
 
       const sBox = document.getElementById('searchSummaryBox');
       if (dec.search_history && dec.search_history.length > 0) {
-        let rowsHtml = dec.search_history.map(s => `
-          <tr>
-            <td>${s.label}</td>
-            <td><code>${s.query}</code></td>
-            <td>${s.found_count > 0 ? `<span class="badge badge-warn">تم العثور على ${s.found_count} عملية</span>` : `<span class="badge badge-ok">لا يوجد (جديد)</span>`}</td>
-          </tr>
-        `).join('');
+        let rowsHtml = dec.search_history.map(s => {
+          let badgeHtml = '';
+          const woCount = s.without_data_count || 0;
+          const wdCount = s.with_data_count != null ? s.with_data_count : (s.found_count || 0);
+          if (woCount > 0) {
+            badgeHtml = `<span class="badge" style="background:rgba(59,130,246,0.22); color:#60a5fa;">✅ يوجد ${woCount} عملية Without Data (إجمالي ${s.found_count})</span>`;
+          } else if (s.found_count > 0) {
+            badgeHtml = `<span class="badge badge-warn">تم العثور على ${wdCount} عملية With Data (لا يوجد Without Data)</span>`;
+          } else {
+            badgeHtml = `<span class="badge badge-ok">لا يوجد (0 عمليات — لا يوجد Without Data)</span>`;
+          }
+          return `
+            <tr>
+              <td>${s.label}</td>
+              <td><code>${s.query}</code></td>
+              <td>${badgeHtml}</td>
+            </tr>
+          `;
+        }).join('');
         sBox.innerHTML = `
           <h3 style="font-size:14px; margin: 12px 0 6px 0; color:#cbd5e1;">نتيجة البحث في All Payments:</h3>
           <table>
