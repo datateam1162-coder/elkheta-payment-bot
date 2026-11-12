@@ -149,7 +149,13 @@ class ElkhetaPaymentBot:
 
         student_phone = st_phones[0] if st_phones else clean_phone(raw_st_phone)
         parent_phone = clean_phone(student_info.get("parent_phone", ""))
+        recv_w_clean = clean_phone(receipt_info.get("receiving_wallet_phone", ""))
+        sheet_w_clean = clean_phone(student_info.get("sheet_wallet_phone", ""))
+        wallet_phones_set = {p for p in (recv_w_clean, sheet_w_clean) if p}
+
         transfer_phone = clean_phone(student_info.get("transfer_phone", "") or receipt_info.get("sender_identifier", ""))
+        if transfer_phone in wallet_phones_set:
+            transfer_phone = ""
         transfer_code = (receipt_info.get("transfer_code", "") or "").strip()
 
         search_queries = []
@@ -242,6 +248,60 @@ class ElkhetaPaymentBot:
                             "query": q_val,
                             "found_count": len([o for o in found_orders if o["query"] == q_val])
                         })
+
+                # If no Without Data match was found yet (e.g. agent didn't write Transfer Number in sheet),
+                # check if the student's previous With Data orders have a historical Transfer # that has a Without Data order today!
+                if not any(o["type"] == "Without Data" for o in found_orders) and search_input.count() > 0:
+                    hist_transfer_phones = []
+                    already_searched = {q[1] for q in search_queries}
+                    for o in list(found_orders):
+                        if o["type"] == "With Data":
+                            head_part = o["raw_row"].split("With Data")[0]
+                            for ph in re.findall(r"01[0125]\d{8}", head_part):
+                                if ph not in already_searched and ph not in wallet_phones_set and ph not in hist_transfer_phones:
+                                    hist_transfer_phones.append(ph)
+                    for h_ph in hist_transfer_phones:
+                        search_input.fill("")
+                        time.sleep(0.2)
+                        search_input.fill(h_ph)
+                        search_input.press("Enter")
+                        time.sleep(2.0)
+                        rows = page.locator("table tbody tr").all()
+                        wo_count = 0
+                        for r in rows:
+                            if r.locator("button:has-text('Edit'), button[title='Edit'], button:has-text('View')").count() == 0:
+                                continue
+                            row_txt = r.inner_text().strip()
+                            if "Without Data" not in row_txt:
+                                continue
+                            date_m = re.search(r"(202\d[\-/]\d{1,2}[\-/]\d{1,2}|(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{1,2},\s+202\d|\d{1,2}\s+[A-Za-z]{3}\s+202\d)", row_txt)
+                            order_date_str = date_m.group(1) if date_m else ""
+                            paid_amt = receipt_info.get("paid_amount")
+                            row_amount_matches = False
+                            if paid_amt is not None:
+                                amt_int = str(int(float(paid_amt)))
+                                amt_fmt = f"{int(float(paid_amt)):,}"
+                                if f"EGP {amt_int}" in row_txt or f"EGP {amt_fmt}" in row_txt or f"Copy {amt_int}" in row_txt or amt_int in row_txt:
+                                    row_amount_matches = True
+                            found_orders.append({
+                                "matched_by": "رقم تحويل سابق للطالب",
+                                "query": h_ph,
+                                "raw_row": row_txt,
+                                "type": "Without Data",
+                                "has_discrepancy": ("Cost Discrepancy" in row_txt or "Remaining" in row_txt),
+                                "row_amount_matches": row_amount_matches,
+                                "order_date": order_date_str
+                            })
+                            wo_count += 1
+                        if wo_count > 0:
+                            search_history.append({
+                                "label": "رقم تحويل سابق للطالب",
+                                "query": h_ph,
+                                "found_count": wo_count
+                            })
+                            if not student_info.get("transfer_phone"):
+                                student_info["transfer_phone"] = h_ph
+                            break
 
                 # Check Remaining Balance page
                 try:

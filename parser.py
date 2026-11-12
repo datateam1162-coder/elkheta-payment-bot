@@ -71,6 +71,8 @@ def clean_student_name_str(name: str) -> str:
         return ""
     name = str(name).strip()
     name = re.sub(r'^[\s"\'\:\-\*\/\\،,\.]+|[\s"\'\:\-\*\/\\،,\.]+$', '', name)
+    # Strip trailing label words like 'الرقم' or 'رقم الطالب' left at the end of the name line
+    name = re.sub(r'\s+(?:الرقم|رقم\s*الطالبه|رقم\s*الطالبة|رقم\s*الطالب|رقم\s*التليفون|رقم\s*الموبايل|رقم)\s*$', '', name, flags=re.IGNORECASE)
     return name.strip()
 
 def format_time_24h(time_str: str) -> str:
@@ -1085,7 +1087,22 @@ def parse_receipt_image(image_path: str) -> dict:
     receiving_wallet_name = ""
     sender_identifier = ""
 
-    if len(all_phones) == 1:
+    # Check if USSD / SMS explicitly identifies the recipient phone (e.g. 'لرقم ... 01005240489 مصاريف الخدمة')
+    explicit_recv_m = re.search(
+        r"(?:(?:لرقم|إلى\s*رقم|الى\s*رقم|لمحفظه|لمحفظة)[^\d]{0,35}((?:00201|\+?201|01)[0125]\d{8})|((?:00201|\+?201|01)[0125]\d{8})\s*(?:مصاريف|الخدمه|الخدمة)|(?:مصاريف|الخدمه|الخدمة)\s*[:\d\s]{0,6}((?:00201|\+?201|01)[0125]\d{8}))",
+        normalize_arabic(combined_text),
+        re.IGNORECASE
+    )
+    explicit_recv_phone = ""
+    if explicit_recv_m:
+        raw_er = explicit_recv_m.group(1) or explicit_recv_m.group(2) or explicit_recv_m.group(3)
+        explicit_recv_phone = clean_phone(raw_er)
+
+    if explicit_recv_phone:
+        receiving_wallet_phone = explicit_recv_phone
+        other_phones = [p for p in all_phones if p != explicit_recv_phone]
+        sender_identifier = other_phones[0] if other_phones else (instapay_handle or card_mask)
+    elif len(all_phones) == 1:
         receiving_wallet_phone = all_phones[0]
         sender_identifier = instapay_handle or card_mask
     elif len(all_phones) >= 2:
