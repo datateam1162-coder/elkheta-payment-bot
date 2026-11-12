@@ -1100,8 +1100,13 @@ def parse_receipt_image(image_path: str) -> dict:
 
     if explicit_recv_phone:
         receiving_wallet_phone = explicit_recv_phone
+        is_ussd_popup = bool(re.search(r"معلومات\s*شركه\s*الاتصالات|اطلب\s*\*9#", normalize_arabic(combined_text)))
         other_phones = [p for p in all_phones if p != explicit_recv_phone]
-        sender_identifier = other_phones[0] if other_phones else (instapay_handle or card_mask)
+        if is_ussd_popup:
+            # USSD popups never display the sender's number; any other number is from the background screen behind the popup
+            sender_identifier = ""
+        else:
+            sender_identifier = other_phones[0] if other_phones else (instapay_handle or card_mask)
     elif len(all_phones) == 1:
         receiving_wallet_phone = all_phones[0]
         sender_identifier = instapay_handle or card_mask
