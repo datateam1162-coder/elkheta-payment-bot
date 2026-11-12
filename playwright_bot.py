@@ -568,7 +568,10 @@ class ElkhetaPaymentBot:
             items_to_add = [None] if is_full_bundle else subjects
 
             for subj_code in items_to_add:
-                # 1. Click 'Add Product' if Language buttons aren't already open
+                # 1. Ensure 'Order Builder' is expanded (clicking 'Add order' auto-collapses Order Builder!)
+                self._expand_section(dialog, "Order Builder", "button:has-text('Add Product')")
+                time.sleep(0.3)
+
                 add_prod_btn = dialog.locator("button:has-text('Add Product')").first
                 if add_prod_btn.count() > 0 and add_prod_btn.is_visible():
                     add_prod_btn.scroll_into_view_if_needed()
@@ -633,7 +636,13 @@ class ElkhetaPaymentBot:
                 st_bundle = st.get("bundle_price")
                 if subj_code is None and st_expected is not None and (st.get("is_sibling") or (st_bundle and float(st_expected) < float(st_bundle))):
                     try:
-                        cur_price_inputs = dialog.locator("label:has-text('Current Price') ~ input, label:has-text('Current Price') ~ div input")
+                        self._expand_section(dialog, "Order Builder", "button:has-text('Add Product')")
+                        time.sleep(0.25)
+                        cur_price_inputs = dialog.locator(
+                            "span:has-text('Current Price') ~ input, "
+                            "label:has-text('Current Price') ~ input, "
+                            "div:has(> span:has-text('Current Price')) input"
+                        )
                         if cur_price_inputs.count() > item_index:
                             cp_inp = cur_price_inputs.nth(item_index)
                             cp_inp.scroll_into_view_if_needed()
