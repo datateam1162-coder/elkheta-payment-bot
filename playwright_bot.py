@@ -303,6 +303,47 @@ class ElkhetaPaymentBot:
                                 student_info["transfer_phone"] = h_ph
                             break
 
+                # Fallback 3: If still no Without Data match (e.g. brand-new student & USSD screenshot without sender phone),
+                # check today's Without Data rows on All Payments matching BOTH Receiving Wallet + Paid Amount
+                paid_amt_for_fb = receipt_info.get("paid_amount")
+                target_w_fb = sheet_w_clean or recv_w_clean
+                target_tag_fb = student_info.get("sheet_wallet_tag", "")
+                if not any(o["type"] == "Without Data" for o in found_orders) and search_input.count() > 0 and (target_w_fb or target_tag_fb) and paid_amt_for_fb is not None:
+                    search_input.fill("")
+                    search_input.press("Enter")
+                    time.sleep(2.0)
+                    wo_rows = page.locator("table tbody tr:has-text('Without Data')").all()
+                    amt_int = str(int(float(paid_amt_for_fb)))
+                    amt_fmt = f"{int(float(paid_amt_for_fb)):,}"
+                    w_no_zero = target_w_fb[1:] if target_w_fb.startswith("0") else target_w_fb
+                    for r in wo_rows:
+                        row_txt = r.inner_text().strip()
+                        has_w = (target_w_fb and target_w_fb in row_txt) or (w_no_zero and len(w_no_zero) >= 10 and w_no_zero in row_txt) or (target_tag_fb and target_tag_fb in row_txt)
+                        has_amt = (f"EGP {amt_int}" in row_txt or f"EGP\xa0{amt_int}" in row_txt or f"EGP {amt_fmt}" in row_txt or f"EGP\xa0{amt_fmt}" in row_txt or f"Copy {amt_int}" in row_txt)
+                        if has_w and has_amt:
+                            head_part = row_txt.split("Without Data")[0]
+                            tr_phones = re.findall(r"01[0125]\d{8}", head_part)
+                            matched_tr = tr_phones[0] if tr_phones else (target_w_fb or target_tag_fb)
+                            date_m = re.search(r"(202\d[\-/]\d{1,2}[\-/]\d{1,2}|(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{1,2},\s+202\d|\d{1,2}\s+[A-Za-z]{3}\s+202\d)", row_txt)
+                            order_date_str = date_m.group(1) if date_m else ""
+                            found_orders.append({
+                                "matched_by": "تطابق المحفظة والمبلغ (Without Data)",
+                                "query": matched_tr,
+                                "raw_row": row_txt,
+                                "type": "Without Data",
+                                "has_discrepancy": ("Cost Discrepancy" in row_txt or "Remaining" in row_txt),
+                                "row_amount_matches": True,
+                                "order_date": order_date_str
+                            })
+                            search_history.append({
+                                "label": "تطابق المحفظة والمبلغ (Without Data)",
+                                "query": matched_tr,
+                                "found_count": 1
+                            })
+                            if tr_phones and not student_info.get("transfer_phone"):
+                                student_info["transfer_phone"] = tr_phones[0]
+                            break
+
                 # Check Remaining Balance page
                 try:
                     page.goto("https://payments.elkheta.org/remaining-balance", wait_until="domcontentloaded", timeout=30000)
@@ -350,7 +391,7 @@ class ElkhetaPaymentBot:
                 hard_case_reasons.append("مذكور في بيانات الطالب أنه Upgrade لأوردر سابق مع وجود عملية Without Data مطابقة.")
             else:
                 proposed_action = "COMPLETE_WITHOUT_DATA"
-                proposed_action_ar = f"الدخول على أوردر Without Data المطابق ({matched_without_data_query}) واستكمال بياناته وتحويله إلى With Data (الحالة 5 في الدوكس)"
+                proposed_action_ar = f"تحويل أوردر Without Data المطابق ({matched_without_data_query}) إلى With Data واستكمال بيانات البرودكتس والسعر فقط (الحالة 5 في الدوكس)"
         elif without_data_matches:
             matched_without_data_query = without_data_matches[0].get("query", "")
             hard_case_reasons.append(
@@ -691,14 +732,24 @@ class ElkhetaPaymentBot:
                         add_order_btn.click()
                         time.sleep(0.6)
 
-                # 8. If student has a discounted price (e.g. Sibling Discount 800 instead of 1050), update Current Price
-                st_expected = st.get("expected_price")
-                st_bundle = st.get("bundle_price")
-                if subj_code is None and st_expected is not None and (st.get("is_sibling") or (st_bundle and float(st_expected) < float(st_bundle))):
+                # 8. Ensure Current Price of the added product matches its expected/target price
+                target_item_price = None
+                if subj_code is None:
+                    target_item_price = st.get("expected_price")
+                else:
+                    subj_prices = st.get("subject_prices") or {}
+                    if subj_code in subj_prices:
+                        target_item_price = subj_prices[subj_code]
+                    elif st.get("expected_price") and len(items_to_add) > 0:
+                        target_item_price = float(st["expected_price"]) / len(items_to_add)
+
+                if target_item_price is not None:
                     try:
                         self._expand_section(dialog, "Order Builder", "button:has-text('Add Product')")
                         time.sleep(0.25)
                         cur_price_inputs = dialog.locator(
+                            "div:has(> button[title='Edit student details']) input, "
+                            "div:has(> div > button[title='Edit student details']) input, "
                             "span:has-text('Current Price') ~ input, "
                             "label:has-text('Current Price') ~ input, "
                             "div:has(> span:has-text('Current Price')) input"
@@ -706,9 +757,21 @@ class ElkhetaPaymentBot:
                         if cur_price_inputs.count() > item_index:
                             cp_inp = cur_price_inputs.nth(item_index)
                             cp_inp.scroll_into_view_if_needed()
-                            cp_str = str(int(float(st_expected)) if float(st_expected).is_integer() else st_expected)
-                            cp_inp.fill(cp_str)
-                            time.sleep(0.2)
+                            cur_cp_val = ""
+                            try:
+                                cur_cp_val = cp_inp.input_value().strip()
+                            except Exception:
+                                pass
+                            need_price_update = True
+                            try:
+                                if cur_cp_val and abs(float(cur_cp_val) - float(target_item_price)) < 0.01:
+                                    need_price_update = False
+                            except Exception:
+                                pass
+                            if need_price_update:
+                                cp_str = str(int(float(target_item_price)) if float(target_item_price).is_integer() else target_item_price)
+                                cp_inp.fill(cp_str)
+                                time.sleep(0.2)
                     except Exception:
                         pass
 
@@ -746,7 +809,46 @@ class ElkhetaPaymentBot:
                 opened_edit_modal = False
 
                 if action_type == "COMPLETE_WITHOUT_DATA":
-                    # Try searching by transfer_phone, parent_phone, student_phone, transfer_code to find the Without Data row
+                    paid_amt = receipt_info.get("paid_amount")
+                    if paid_amt is None:
+                        paid_amt = price_info.get("expected_price")
+                    target_wallet = clean_phone(student_info.get("sheet_wallet_phone", "") or receipt_info.get("receiving_wallet_phone", ""))
+                    target_tag = student_info.get("sheet_wallet_tag", "")
+
+                    def _click_matching_without_data_edit(require_wallet: bool = False) -> bool:
+                        rows = page.locator("table tbody tr:has-text('Without Data')").all()
+                        if not rows:
+                            return False
+                        # Pass 1: match amount (and wallet if require_wallet)
+                        for r in rows:
+                            r_txt = r.inner_text()
+                            if require_wallet:
+                                w_no_zero = target_wallet[1:] if target_wallet.startswith("0") else target_wallet
+                                has_w = (target_wallet and target_wallet in r_txt) or (w_no_zero and len(w_no_zero) >= 10 and w_no_zero in r_txt) or (target_tag and target_tag in r_txt)
+                                if not has_w:
+                                    continue
+                            if paid_amt is not None:
+                                amt_int = str(int(float(paid_amt)))
+                                amt_fmt = f"{int(float(paid_amt)):,}"
+                                if not (f"EGP {amt_int}" in r_txt or f"EGP\xa0{amt_int}" in r_txt or f"EGP {amt_fmt}" in r_txt or f"EGP\xa0{amt_fmt}" in r_txt or f"Copy {amt_int}" in r_txt):
+                                    continue
+                            eb = r.locator("button:has-text('Edit'), button[title='Edit']").first
+                            if eb.count() > 0:
+                                eb.scroll_into_view_if_needed()
+                                eb.click()
+                                time.sleep(1.0)
+                                return True
+                        # Pass 2: if not require_wallet and only 1 Without Data row exists for this specific phone/code query
+                        if not require_wallet and len(rows) == 1:
+                            eb = rows[0].locator("button:has-text('Edit'), button[title='Edit']").first
+                            if eb.count() > 0:
+                                eb.scroll_into_view_if_needed()
+                                eb.click()
+                                time.sleep(1.0)
+                                return True
+                        return False
+
+                    # 1. Try searching by transfer_phone, matched_without_data_query, parent_phone, student_phone, transfer_code
                     candidate_queries = []
                     for q_cand in [
                         student_info.get("matched_without_data_query", ""),
@@ -759,6 +861,7 @@ class ElkhetaPaymentBot:
                             candidate_queries.append(q_cand)
 
                     search_input = page.locator("input[placeholder*='Search by name, phone, transfer']").first
+                    hist_transfer_phones = []
                     for q in candidate_queries:
                         if search_input.count() > 0:
                             search_input.fill("")
@@ -766,13 +869,43 @@ class ElkhetaPaymentBot:
                             search_input.fill(q)
                             search_input.press("Enter")
                             time.sleep(2.0)
-                            edit_btn = page.locator("table tbody tr:has-text('Without Data') button:has-text('Edit'), table tbody tr:has-text('Without Data') button[title='Edit']").first
-                            if edit_btn.count() > 0:
-                                edit_btn.scroll_into_view_if_needed()
-                                edit_btn.click()
-                                time.sleep(1.0)
+                            if _click_matching_without_data_edit(require_wallet=False):
                                 opened_edit_modal = True
                                 break
+                            # Also collect any historical Transfer # from the student's previous With Data rows
+                            for wd_row in page.locator("table tbody tr:has-text('With Data')").all():
+                                head_part = wd_row.inner_text().split("With Data")[0]
+                                for ph in re.findall(r"01[0125]\d{8}", head_part):
+                                    if ph not in candidate_queries and ph != target_wallet and ph not in hist_transfer_phones:
+                                        hist_transfer_phones.append(ph)
+
+                    # 2. If not found yet, try the student's historical Transfer # phones
+                    if not opened_edit_modal and search_input.count() > 0:
+                        for h_ph in hist_transfer_phones:
+                            search_input.fill("")
+                            time.sleep(0.2)
+                            search_input.fill(h_ph)
+                            search_input.press("Enter")
+                            time.sleep(2.0)
+                            if _click_matching_without_data_edit(require_wallet=False):
+                                opened_edit_modal = True
+                                break
+
+                    # 3. Fallback: clear search and check today's Without Data rows matching both Receiving Wallet + Paid Amount
+                    if not opened_edit_modal and search_input.count() > 0 and (target_wallet or target_tag) and paid_amt is not None:
+                        search_input.fill("")
+                        search_input.press("Enter")
+                        time.sleep(2.0)
+                        if _click_matching_without_data_edit(require_wallet=True):
+                            opened_edit_modal = True
+
+                    if not opened_edit_modal:
+                        context.close()
+                        return {
+                            "success": False,
+                            "submitted": False,
+                            "error": "لم يتم العثور على أوردر Without Data مطابق على السيستم لتحويله إلى With Data — تأكد من الرقم المحول منه أو المحفظة والمبلغ."
+                        }
 
                 if not opened_edit_modal:
                     # Open Action -> Activate
@@ -810,27 +943,26 @@ class ElkhetaPaymentBot:
                 # Step C: Order Builder (Add Product -> Language -> Class -> Package -> Subject -> Student Details -> Add order)
                 self._build_order_items(dialog, student_info)
 
-                # Step D: Payment Details (Paid Amount, Paid Time, Parent Phone, Receipt Images)
-                self._expand_section(dialog, "Payment Details", "input[placeholder*='01XXXXXXXXX']")
-                try:
-                    paid_amt = receipt_info.get("paid_amount")
-                    if paid_amt is None:
-                        paid_amt = price_info.get("expected_price")
-                    if paid_amt is not None:
-                        amt_inp = dialog.locator("input[placeholder='0.00'], input[type='number']").first
-                        if amt_inp.count() > 0:
-                            cur_val = ""
-                            try:
-                                cur_val = amt_inp.input_value().strip()
-                            except Exception:
-                                pass
-                            if not opened_edit_modal or not cur_val or cur_val in ("0", "0.00"):
+                # When converting an existing Without Data order to With Data (opened_edit_modal == True),
+                # ONLY Payment Mode -> With Data and Order Builder (products + prices) are needed!
+                # Keep Order Builder expanded for clear visual verification and do NOT overwrite existing Wallet / Payment / Transfer details.
+                if opened_edit_modal:
+                    self._expand_section(dialog, "Order Builder", "button:has-text('Add Product')")
+                else:
+                    # Step D: Payment Details (Paid Amount, Paid Time, Parent Phone, Receipt Images)
+                    self._expand_section(dialog, "Payment Details", "input[placeholder*='01XXXXXXXXX']")
+                    try:
+                        paid_amt = receipt_info.get("paid_amount")
+                        if paid_amt is None:
+                            paid_amt = price_info.get("expected_price")
+                        if paid_amt is not None:
+                            amt_inp = dialog.locator("input[placeholder='0.00'], input[type='number']").first
+                            if amt_inp.count() > 0:
                                 amt_inp.scroll_into_view_if_needed()
                                 amt_str = str(int(float(paid_amt)) if float(paid_amt).is_integer() else paid_amt)
                                 amt_inp.fill(amt_str)
                                 time.sleep(0.2)
 
-                    if not opened_edit_modal:
                         paid_time_24 = format_time_24h(receipt_info.get("paid_time", "") or receipt_info.get("raw_datetime", ""))
                         if paid_time_24:
                             # Locate Paid Time input (near '24-hour (HH:mm)')
@@ -843,33 +975,32 @@ class ElkhetaPaymentBot:
                                 time_inp.fill(paid_time_24)
                                 time.sleep(0.2)
 
-                    parent_ph = clean_phone(student_info.get("parent_phone", ""))
-                    if parent_ph:
-                        par_inp = dialog.locator("input[placeholder*='01XXXXXXXXX']").first
-                        if par_inp.count() > 0:
-                            par_inp.scroll_into_view_if_needed()
-                            par_inp.fill(parent_ph)
-                            time.sleep(0.2)
+                        parent_ph = clean_phone(student_info.get("parent_phone", ""))
+                        if parent_ph:
+                            par_inp = dialog.locator("input[placeholder*='01XXXXXXXXX']").first
+                            if par_inp.count() > 0:
+                                par_inp.scroll_into_view_if_needed()
+                                par_inp.fill(parent_ph)
+                                time.sleep(0.2)
 
-                    if not opened_edit_modal and receipt_path and os.path.isfile(receipt_path):
-                        abs_rcpt = os.path.abspath(receipt_path)
-                        file_inp = dialog.locator("input[type='file']").first
-                        if file_inp.count() > 0:
-                            file_inp.set_input_files(abs_rcpt)
-                            time.sleep(1.0)
-                        else:
-                            select_files_btn = dialog.locator("button:has-text('Select Files')").first
-                            if select_files_btn.count() > 0:
-                                select_files_btn.scroll_into_view_if_needed()
-                                with page.expect_file_chooser(timeout=5000) as fc_info:
-                                    select_files_btn.click()
-                                fc_info.value.set_files(abs_rcpt)
+                        if receipt_path and os.path.isfile(receipt_path):
+                            abs_rcpt = os.path.abspath(receipt_path)
+                            file_inp = dialog.locator("input[type='file']").first
+                            if file_inp.count() > 0:
+                                file_inp.set_input_files(abs_rcpt)
                                 time.sleep(1.0)
-                except Exception:
-                    pass
+                            else:
+                                select_files_btn = dialog.locator("button:has-text('Select Files')").first
+                                if select_files_btn.count() > 0:
+                                    select_files_btn.scroll_into_view_if_needed()
+                                    with page.expect_file_chooser(timeout=5000) as fc_info:
+                                        select_files_btn.click()
+                                    fc_info.value.set_files(abs_rcpt)
+                                    time.sleep(1.0)
+                    except Exception:
+                        pass
 
-                # Step E: Transfer Details (Transfer Number *)
-                if not opened_edit_modal:
+                    # Step E: Transfer Details (Transfer Number *)
                     self._expand_section(dialog, "Transfer Details", "input[placeholder*='Enter transfer number']")
                     t_phone = (
                         clean_phone(student_info.get("transfer_phone", ""))

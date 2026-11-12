@@ -1270,6 +1270,8 @@ def calculate_expected_price(student_info: dict, prices_data: dict, paid_amount:
     students_list = student_info.get("students_list") or []
     if len(students_list) <= 1:
         res = _calculate_single_student_price(student_info, prices_data, paid_amount)
+        student_info["expected_price"] = res.get("expected_price")
+        student_info["bundle_price"] = res.get("bundle_price")
         if len(students_list) == 1:
             students_list[0]["expected_price"] = res.get("expected_price")
             students_list[0]["bundle_price"] = res.get("bundle_price")
