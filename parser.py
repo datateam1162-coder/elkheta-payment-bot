@@ -670,20 +670,37 @@ def parse_student_text(raw_text: str) -> dict:
             break
 
     section_code = f"{grade_code}-{edu_code}" if grade_code else ""
+    branch_label = ""
     if grade_code == "BC":
         section_code = f"S2-{edu_code}-Baccalaureate"
+        branch_label = "بكالوريا"
     elif grade_code == "S2":
         if re.search(r"(ادبي|أدبي|art)", norm_text, re.IGNORECASE):
             section_code = f"S2-{edu_code}-ART"
+            branch_label = "أدبي"
         else:
             section_code = f"S2-{edu_code}-SCIENTIFIC"
+            branch_label = "علمي"
     elif grade_code == "S3":
         if re.search(r"(ادبي|أدبي|art)", norm_text, re.IGNORECASE):
             section_code = f"S3-{edu_code}-ART"
+            branch_label = "أدبي"
         elif re.search(r"(رياضه|رياضة|رياضيات|ماث|math)", norm_text, re.IGNORECASE):
             section_code = f"S3-{edu_code}-MATH"
+            branch_label = "علمي رياضة"
         else:
             section_code = f"S3-{edu_code}-SCIENCE"
+            branch_label = "علمي علوم"
+
+    # Clean human-readable label for UI (no empty parentheses)
+    display_parts = []
+    if grade_label:
+        display_parts.append(grade_label)
+    if branch_label and branch_label not in (grade_label or ""):
+        display_parts.append(branch_label)
+    if education_type:
+        display_parts.append(education_type)
+    display_section = " - ".join(display_parts) if display_parts else education_type
 
     # 6. Duration (شهر / ترم / سنة)
     norm_for_dur = re.sub(r"السنه\s*الدراسيه\s*(?:202\d\s*[/\-]\s*202\d)?", "", norm_text)
@@ -706,8 +723,18 @@ def parse_student_text(raw_text: str) -> dict:
         package_tier = "Class"
         package_tier_ar = "خطة كلاس (Class)"
 
-    # 8. Sibling Discount flag
+    # 8. Sibling Discount & Text Intent Flags (Upgrade / Final Payment / Two Students)
     is_sibling = bool(re.search(r"(اخوات|إخوات|اخين|اختين|sibling)", norm_text, re.IGNORECASE))
+    is_upgrade_note = bool(re.search(
+        r"(ابجريد|أبجريد|ابجرد|upgrade|تكميل\s*للترم|تكمل\s*للترم|تكبير\s*لترم|علي\s*الباقه|ينقل\s*علي\s*الكلاس|دفع\s*الفرق|دفعت\s*الفرق|فرق\s*الاسعار|فرق\s*السعر|تحويل\s*من\s*محتوي)",
+        norm_text,
+        re.IGNORECASE
+    ))
+    is_final_payment_note = bool(re.search(
+        r"(باقي\s*المبلغ|باقي\s*الحساب|تكمله\s*المبلغ|تكملة\s*المبلغ|كملت\s*المبلغ|كمل\s*المبلغ|مبلغ\s*ناقص|حولت\s*باقي)",
+        norm_text,
+        re.IGNORECASE
+    ))
 
     # 9. Subjects or Full Bundle
     subjects = []
@@ -775,12 +802,16 @@ def parse_student_text(raw_text: str) -> dict:
         "edu_code": edu_code,
         "grade_code": grade_code,
         "grade_label": grade_label,
+        "branch_label": branch_label,
         "section_code": section_code,
+        "display_section": display_section,
         "duration": duration,
         "duration_code": duration_code,
         "package_tier": package_tier,
         "package_tier_ar": package_tier_ar,
         "is_sibling": is_sibling,
+        "is_upgrade_note": is_upgrade_note,
+        "is_final_payment_note": is_final_payment_note,
         "is_full_bundle": is_full_bundle,
         "subjects": subjects,
         "subjects_ar": subjects_ar,
@@ -829,13 +860,18 @@ def parse_receipt_image(image_path: str) -> dict:
     elif re.search(r"fawry|فوري", combined_text, re.IGNORECASE):
         provider = "Fawry"
 
-    # 2. Extract Paid Amount (EGP)
+    # 2. Extract Paid Amount (EGP) using provider-aware templates + multi-scale validation
+    # Number pattern supporting 1,050 / 12,500 / 1050 / 300.00 without partial matching after a comma
+    NUM_PAT = r"(?<!\d)(?<!\d,)(\d{1,2}(?:,\d{3})+|\d{2,5})(?:\.\d{1,2})?(?!,\d)(?!\d)"
     paid_amount = None
     amt_patterns = [
-        r"(?:جنيه|جنية|جنه|حنه|حنيه|EGP|LE)\s*(\d{2,5}(?:,\d{3})*(?:\.\d{1,2})?)\s*(?:تحويل|حول)",
-        r"(?:تم\s*تحويل|تحويل\s*مبلغ|تم\s*استلام|مبلغ\s*التحويل)\s*[:\-]?\s*(\d{2,5}(?:,\d{3})*(?:\.\d{1,2})?)",
-        r"\b(\d{2,5}(?:,\d{3})*(?:\.\d{1,2})?)\s*(?:EGP|LE|جنيه|جنية|جنه|حنه|حنيه|ج\.م)\b",
-        r"(?:EGP|LE|جنيه|جنية|جنه|حنه|حنيه|ج\.م)\s*[:\-]?\s*(\d{2,5}(?:,\d{3})*(?:\.\d{1,2})?)\b",
+        # Template A: Vodafone Cash SMS / USSD / Central Phone ('تم تحويل 1050 جنيه' or 'جنيه 1050 تحويل تم')
+        rf"(?:جنيه|جنية|جنه|حنه|حنيه|EGP|LE)\s*{NUM_PAT}\s*(?:تحويل|حول)",
+        rf"(?:تم\s*تحويل|تحويل\s*مبلغ|تم\s*استلام|مبلغ\s*التحويل|قيمة\s*التحويل|قيمه\s*التحويل|اجمالي\s*المبلغ|إجمالي\s*المبلغ)\s*[:\-]?\s*{NUM_PAT}",
+        # Template B: InstaPay & Standard ('1,050 EGP', '300 EGP', '900 جنيه')
+        rf"{NUM_PAT}\s*(?:EGP|LE|جنيه|جنية|جنه|حنه|حنيه|ج\.م)\b",
+        # Template C: Ana Vodafone RTL & Fawry ('جنيه 195', 'حنه 900', 'EGP 1,050', 'المبلغ: 1050')
+        rf"(?:EGP|LE|جنيه|جنية|جنه|حنه|حنيه|ج\.م|المبلغ|القيمة|القيمه)\s*[:\-]?\s*{NUM_PAT}",
     ]
     candidates = []
     for pat in amt_patterns:
@@ -849,12 +885,12 @@ def parse_receipt_image(image_path: str) -> dict:
                 pass
 
     if candidates:
-        # Remove truncated OCR prefix artifacts (e.g. 90 when 900 or 901 was also read at another scale)
+        # Remove truncated OCR prefix/suffix artifacts (e.g. 90 when 900 is read, or 50 when 1050 is read)
         int_strs = [str(int(c)) for c in candidates if float(c).is_integer()]
         filtered = []
         for c in candidates:
             s_c = str(int(c)) if float(c).is_integer() else ""
-            if s_c and any(other != s_c and other.startswith(s_c) for other in int_strs):
+            if s_c and any(other != s_c and (other.startswith(s_c) or other.endswith(s_c)) and len(other) > len(s_c) for other in int_strs):
                 continue
             filtered.append(c)
         if not filtered:
@@ -874,17 +910,17 @@ def parse_receipt_image(image_path: str) -> dict:
         for i, line in enumerate(en_lines):
             u = line.strip().upper()
             if "EGP" in u:
-                nums = re.findall(r"\d{2,5}(?:,\d{3})*(?:\.\d+)?", line)
+                nums = re.findall(r"\d{1,2}(?:,\d{3})+|\d{2,5}", line)
                 if nums:
                     paid_amount = float(nums[0].replace(",", ""))
                     break
                 elif i > 0:
-                    prev_nums = re.findall(r"\d{2,5}(?:,\d{3})*(?:\.\d+)?", en_lines[i - 1])
+                    prev_nums = re.findall(r"\d{1,2}(?:,\d{3})+|\d{2,5}", en_lines[i - 1])
                     if prev_nums:
                         paid_amount = float(prev_nums[0].replace(",", ""))
                         break
             elif "VF-CASH" in u and i + 1 < len(en_lines):
-                nxt = en_lines[i + 1].strip()
+                nxt = en_lines[i + 1].strip().replace(",", "")
                 if re.match(r"^\d{2,5}(?:\.\d+)?$", nxt):
                     paid_amount = float(nxt)
                     break
@@ -926,11 +962,16 @@ def parse_receipt_image(image_path: str) -> dict:
                     break
 
     # 4. Extract Reference / Transfer Code (10-16 digits that is NOT a phone number)
-    transfer_code = ""
-    for num in re.findall(r"\b\d{10,16}\b", en_text):
+    # Join split 12-digit reference numbers like '1 30369429803' -> '130369429803'
+    ref_search_text = re.sub(r"(?<!\d)(\d)\s+(\d{10,12})(?!\d)", r"\1\2", combined_text)
+    ref_candidates = []
+    for num in re.findall(r"\b\d{10,16}\b", ref_search_text):
         if not re.match(r"^(?:00201|201|01)[0125]\d{8}$", num):
-            transfer_code = num
-            break
+            if num not in ref_candidates:
+                ref_candidates.append(num)
+    # Pick the longest reference number (e.g. 130369429803 over truncated 30369429803)
+    ref_candidates.sort(key=len, reverse=True)
+    transfer_code = ref_candidates[0] if ref_candidates else ""
 
     # 5. Extract Date & Time
     paid_date = ""

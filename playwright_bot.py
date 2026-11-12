@@ -264,9 +264,14 @@ class ElkhetaPaymentBot:
         ]
 
         if exact_without_data:
-            proposed_action = "COMPLETE_WITHOUT_DATA"
             matched_without_data_query = exact_without_data[0].get("query", "")
-            proposed_action_ar = f"الدخول على أوردر Without Data المطابق ({matched_without_data_query}) واستكمال بياناته وتحويله إلى With Data"
+            if student_info.get("is_upgrade_note"):
+                proposed_action = "CONVERT_WITHOUT_DATA_TO_UPGRADE"
+                proposed_action_ar = f"تعديل أوردر Without Data ({matched_without_data_query}) وتحويله إلى Convert To Upgrade (الحالة 7 في الدوكس)"
+                hard_case_reasons.append("مذكور في بيانات الطالب أنه Upgrade لأوردر سابق مع وجود عملية Without Data مطابقة.")
+            else:
+                proposed_action = "COMPLETE_WITHOUT_DATA"
+                proposed_action_ar = f"الدخول على أوردر Without Data المطابق ({matched_without_data_query}) واستكمال بياناته وتحويله إلى With Data (الحالة 5 في الدوكس)"
         elif without_data_matches:
             matched_without_data_query = without_data_matches[0].get("query", "")
             hard_case_reasons.append(
@@ -284,13 +289,41 @@ class ElkhetaPaymentBot:
                     except ValueError:
                         pass
 
-            if days_old >= 25:
+            has_rem_order = any(o.get("has_discrepancy") for o in with_data_matches)
+            if has_rem_order or student_info.get("is_final_payment_note"):
+                proposed_action = "FINAL_PAYMENT_COMPLETE"
+                proposed_action_ar = f"استكمال مبلغ ناقص (Final Payment) — الدخول Edit على الأوردر وإضافة المبلغ في Final Amount (الحالة 11 في الدوكس)"
+                hard_case_reasons.append(
+                    f"تم العثور على أوردر سابق عليه مبلغ متبقي (Remaining) أو مذكور في الشيت أنه استكمال باقي المبلغ ({latest_order.get('query')})."
+                )
+            elif student_info.get("is_upgrade_note"):
+                proposed_action = "UPGRADE_EXISTING_ORDER"
+                proposed_action_ar = f"ترقية باقة (Action -> Upgrade) للأوردر السابق ({latest_order.get('query')}) وحساب فرق السعر (الحالة 6 في الدوكس)"
+                hard_case_reasons.append(
+                    f"مذكور في نص الشيت أنه ترقية باقة (Upgrade / دفع الفرق) مع وجود أوردر سابق للطالب ({latest_order.get('query')})."
+                )
+            elif days_old >= 25:
                 proposed_action = "RENEWAL_ACTIVATE_WITH_DATA"
                 proposed_action_ar = f"تجديد اشتراك (أوردر قديم منذ {days_old} يوم) -> تسجيل اشتراك جديد With Data"
             else:
+                if receipt_info.get("paid_amount") and price_info.get("expected_price") and float(receipt_info["paid_amount"]) < float(price_info["expected_price"]):
+                    proposed_action = "UPGRADE_EXISTING_ORDER"
+                    proposed_action_ar = f"احتمال ترقية باقة (Action -> Upgrade) أو استكمال دفع (Final Payment) لأوردر حديث ({latest_order.get('query')})"
                 hard_case_reasons.append(
                     f"تم العثور على أوردر With Data حديث لنفس الرقم ({latest_order.get('matched_by')}: {latest_order.get('query')}) - احتمال تكرار أو Upgrade أو Final Payment."
                 )
+        else:
+            if student_info.get("is_upgrade_note"):
+                proposed_action = "UPGRADE_EXISTING_ORDER"
+                proposed_action_ar = "ترقية باقة (Action -> Upgrade) — مذكور في الشيت أنه دفع فرق سعر لترقية الباقة (الحالة 6 في الدوكس)"
+                hard_case_reasons.append("مذكور في نص الشيت أن الطالب يدفع فرق سعر لترقية الباقة (Upgrade).")
+            elif student_info.get("is_final_payment_note"):
+                proposed_action = "FINAL_PAYMENT_COMPLETE"
+                proposed_action_ar = "استكمال مبلغ ناقص (Final Payment — الحالة 11 في الدوكس)"
+                hard_case_reasons.append("مذكور في نص الشيت أن التحويل هو استكمال باقي مبلغ (Final Payment).")
+            elif remaining_records:
+                proposed_action = "ACTIVATE_WITH_USED_BALANCE"
+                proposed_action_ar = "تسجيل اشتراك جديد مع استخدام رصيد سابق (+ Add Used Balance من Remaining Balance — الحالة 4 في الدوكس)"
 
         # Check 1: Price Discrepancy
         paid_amount = receipt_info.get("paid_amount")

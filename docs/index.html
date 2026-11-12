@@ -486,8 +486,12 @@
               <span>الأكشن المطلوب تنفيذه</span>
               <select id="f_proposed_action">
                 <option value="ACTIVATE_NEW_WITH_DATA">تسجيل اشتراك جديد (Activate - With Data)</option>
-                <option value="RENEWAL_ACTIVATE_WITH_DATA">تجديد اشتراك (Activate - With Data)</option>
-                <option value="COMPLETE_WITHOUT_DATA">استكمال أوردر Without Data موجود</option>
+                <option value="COMPLETE_WITHOUT_DATA">استكمال أوردر Without Data موجود (Edit -> With Data)</option>
+                <option value="RENEWAL_ACTIVATE_WITH_DATA">تجديد اشتراك قديم (Activate - With Data)</option>
+                <option value="UPGRADE_EXISTING_ORDER">ترقية باقة لأوردر موجود (Action -> Upgrade)</option>
+                <option value="CONVERT_WITHOUT_DATA_TO_UPGRADE">تحويل أوردر Without Data إلى ترقية (Convert To Upgrade)</option>
+                <option value="FINAL_PAYMENT_COMPLETE">استكمال مبلغ ناقص لأوردر عليه Remaining (Final Payment)</option>
+                <option value="ACTIVATE_WITH_USED_BALANCE">اشتراك جديد مع استخدام رصيد Remaining (+ Add Used Balance)</option>
               </select>
             </div>
           </div>
@@ -810,13 +814,12 @@
       document.getElementById('f_student_name').value = st.student_name || '';
       document.getElementById('f_student_phone').value = st.student_phone || '';
       document.getElementById('f_parent_phone').value = st.parent_phone || '';
-      document.getElementById('f_section_code').value = `${st.education_type || ''} - ${st.grade_label || ''} (${st.section_code || ''})`;
+      document.getElementById('f_section_code').value = st.display_section || [st.grade_label, st.branch_label, st.education_type].filter(Boolean).join(' - ') || st.education_type || '';
       document.getElementById('f_duration').value = `${st.package_tier || 'Content'} - ${st.duration || ''}`;
       document.getElementById('f_subjects').value = (st.subjects_ar || []).join(' + ') || (st.is_full_bundle ? 'باقة كاملة (كل المواد)' : 'غير محدد');
       document.getElementById('f_paid_amount').value = rc.paid_amount != null ? rc.paid_amount : '';
       document.getElementById('f_expected_price').value = pr.expected_price != null ? `${pr.expected_price} ج (${pr.explanation || ''})` : 'غير معروف في الجدول';
-      const wTag = st.sheet_wallet_tag ? ` (${st.sheet_wallet_tag})` : '';
-      document.getElementById('f_receiving_wallet').value = (rc.receiving_wallet_phone || st.sheet_wallet_phone || '') + wTag;
+      document.getElementById('f_receiving_wallet').value = rc.receiving_wallet_phone || st.sheet_wallet_phone || '';
       document.getElementById('f_transfer_phone').value = st.transfer_phone || rc.transfer_phone || '';
       document.getElementById('f_transfer_code').value = rc.transfer_code || '';
       document.getElementById('f_datetime').value = rc.paid_time || rc.raw_datetime || '';
